@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test runner script for Trading Arena tests
+Test runner script for Trading Arena tests using UV
 """
 
 import sys
@@ -9,51 +9,51 @@ import os
 from pathlib import Path
 
 
-def run_command(cmd, description):
-    """Run a command and handle errors"""
+def run_uv_command(cmd, description, check=True):
+    """Run a uv command and handle errors"""
     print(f"\n{'='*60}")
     print(f"Running: {description}")
-    print(f"Command: {' '.join(cmd)}")
+    print(f"Command: uv {' '.join(cmd)}")
     print('='*60)
 
     try:
-        result = subprocess.run(cmd, check=True, capture_output=False)
-        print(f"✅ {description} completed successfully")
-        return True
+        full_cmd = ["uv"] + cmd
+        result = subprocess.run(full_cmd, check=check, capture_output=False)
+        if result.returncode == 0:
+            print(f"✅ {description} completed successfully")
+            return True
+        else:
+            print(f"❌ {description} failed with exit code {result.returncode}")
+            return False
     except subprocess.CalledProcessError as e:
         print(f"❌ {description} failed with exit code {e.returncode}")
         return False
     except FileNotFoundError:
-        print(f"❌ Command not found: {cmd[0]}")
+        print(f"❌ 'uv' command not found. Please install uv: https://docs.astral.sh/uv/")
         return False
 
 
-def check_dependencies():
-    """Check if required dependencies are installed"""
-    print("🔍 Checking dependencies...")
+def check_uv_installation():
+    """Check if uv is installed and project is set up"""
+    print("🔍 Checking UV installation...")
 
-    required_packages = [
-        "pytest",
-        "alpaca-py",
-        "pandas",
-        "numpy",
-        "pydantic",
-        "python-dotenv"
-    ]
+    # Check if uv is available
+    if not run_uv_command(["--version"], "Checking UV", check=False):
+        print("❌ UV not found. Please install UV:")
+        print("  curl -LsSf https://astral.sh/uv/install.sh | sh")
+        print("  # or on Windows:")
+        print("  powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\"")
+        return False
 
-    missing_packages = []
+    # Check if virtual environment exists
+    if not Path(".venv").exists():
+        print("⚠️  Virtual environment not found. Setting up...")
+        if not run_uv_command(["venv"], "Creating virtual environment"):
+            return False
 
-    for package in required_packages:
-        try:
-            __import__(package.replace('-', '_'))
-            print(f"✅ {package}")
-        except ImportError:
-            print(f"❌ {package} (missing)")
-            missing_packages.append(package)
-
-    if missing_packages:
-        print(f"\n⚠️  Missing packages: {', '.join(missing_packages)}")
-        print("Install with: pip install -r requirements.txt")
+    # Check if dependencies are installed
+    if not run_uv_command(["sync", "--group", "test"], "Installing test dependencies", check=False):
+        print("❌ Failed to install dependencies")
         return False
 
     return True
@@ -61,16 +61,16 @@ def check_dependencies():
 
 def main():
     """Main test runner"""
-    print("🚀 Trading Arena Test Runner")
+    print("🚀 Trading Arena Test Runner (UV Edition)")
     print("=" * 60)
 
     # Check if we're in the right directory
-    if not Path("src/tools.py").exists():
-        print("❌ Error: src/tools.py not found. Please run from project root.")
+    if not Path("pyproject.toml").exists():
+        print("❌ Error: pyproject.toml not found. Please run from project root.")
         sys.exit(1)
 
-    # Check dependencies
-    if not check_dependencies():
+    # Check UV installation and setup
+    if not check_uv_installation():
         sys.exit(1)
 
     # Change to project root if needed
@@ -80,48 +80,39 @@ def main():
     total_tests = 0
 
     # Test 1: Import test
-    if run_command([
-        sys.executable, "test_imports.py"
+    if run_uv_command([
+        "run", "python", "test_imports.py"
     ], "Import verification"):
         success_count += 1
     total_tests += 1
 
-    # Test 2: Code formatting check (optional)
-    if run_command([
-        sys.executable, "-m", "pytest", "tests/", "-k", "test_", "--collect-only"
+    # Test 2: Test collection check
+    if run_uv_command([
+        "run", "pytest", "tests/", "--collect-only"
     ], "Test collection check"):
         success_count += 1
     total_tests += 1
 
     # Test 3: Run unit tests
-    if run_command([
-        sys.executable, "-m", "pytest", "tests/", "-v", "-m", "not integration"
+    if run_uv_command([
+        "run", "pytest", "tests/", "-v", "-m", "not integration"
     ], "Unit tests"):
         success_count += 1
     total_tests += 1
 
     # Test 4: Run integration tests
-    if run_command([
-        sys.executable, "-m", "pytest", "tests/test_integration.py", "-v"
+    if run_uv_command([
+        "run", "pytest", "tests/test_integration.py", "-v"
     ], "Integration tests"):
         success_count += 1
     total_tests += 1
 
-    # Test 5: Run all tests with coverage (if coverage is available)
-    try:
-        if run_command([
-            sys.executable, "-m", "pytest", "tests/", "--cov=src", "--cov-report=term-missing", "--cov-report=html"
-        ], "All tests with coverage"):
-            success_count += 1
-        total_tests += 1
-    except:
-        print("⚠️  Coverage not available. Install with: pip install pytest-cov")
-        # Run all tests without coverage
-        if run_command([
-            sys.executable, "-m", "pytest", "tests/", "-v"
-        ], "All tests"):
-            success_count += 1
-        total_tests += 1
+    # Test 5: Run all tests with coverage
+    if run_uv_command([
+        "run", "pytest", "tests/", "--cov=src", "--cov-report=term-missing", "--cov-report=html"
+    ], "All tests with coverage"):
+        success_count += 1
+    total_tests += 1
 
     # Summary
     print(f"\n{'='*60}")

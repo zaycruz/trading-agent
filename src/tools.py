@@ -607,7 +607,7 @@ class AlpacaTradingTools:
                 },
                 "position_count": len(positions),
                 "diversification_score": "GOOD" if len(positions) > 10 else "FAIR" if len(positions) > 5 else "POOR",
-                "total_unrealized_pl": total_unrealized_pl,
+                "total_unrealized_pl": total_unrealized,
                 "losing_positions_count": len(losing_positions),
                 "winning_positions_count": len(winning_positions),
                 "risk_metrics": {
@@ -693,11 +693,11 @@ def screen_options(underlying_symbol: str, min_dte: int = 7, max_dte: int = 60) 
 
 def buy_option(symbol: str, quantity: int, order_type: str = "market", limit_price: float = None) -> Dict[str, Any]:
     """Buy an options contract"""
-    return trading_tools.buy_option_contract(symbol, quantity, OrderType(order_type), limit_price)
+    return trading_tools.buy_option_contract(symbol, quantity, order_type, limit_price)
 
 def sell_option(symbol: str, quantity: int, order_type: str = "market", limit_price: float = None) -> Dict[str, Any]:
     """Sell an options contract"""
-    return trading_tools.sell_option_contract(symbol, quantity, OrderType(order_type), limit_price)
+    return trading_tools.sell_option_contract(symbol, quantity, order_type, limit_price)
 
 def close_position(symbol: str, quantity: int = None) -> Dict[str, Any]:
     """Close an options position"""
