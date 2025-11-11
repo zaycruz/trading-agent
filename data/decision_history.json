@@ -1,0 +1,241 @@
+[
+  {
+    "decision_id": 1,
+    "timestamp": "2025-11-11T13:16:29.918766",
+    "reasoning": "Trade executed via agent",
+    "action": "trade",
+    "parameters": {
+      "order_type": "market",
+      "quantity": 0.1,
+      "side": "buy",
+      "symbol": "BTC/USD"
+    },
+    "result": {
+      "order_id": "b6aa380d-59f5-4c6e-9bc5-dc8ead128f1f",
+      "symbol": "BTC/USD",
+      "side": "OrderSide.BUY",
+      "quantity": 0.1,
+      "order_type": "OrderType.MARKET",
+      "status": "OrderStatus.PENDING_NEW",
+      "submitted_at": "2025-11-11 18:16:29.938071+00:00",
+      "filled_avg_price": null
+    },
+    "portfolio_value": null
+  },
+  {
+    "decision_id": 2,
+    "timestamp": "2025-11-11T13:49:51.143062",
+    "reasoning": "Options trade executed via agent",
+    "action": "options_trade",
+    "parameters": {
+      "legs": [
+        {
+          "expiration_date": "2025-11-11",
+          "quantity": 1,
+          "side": "buy",
+          "strike_price": 683,
+          "symbol": "SPY251111C00683000",
+          "type": "call"
+        },
+        {
+          "expiration_date": "2025-11-11",
+          "quantity": 1,
+          "side": "sell",
+          "strike_price": 684,
+          "symbol": "SPY251111C00684000",
+          "type": "call"
+        }
+      ],
+      "limit_price": 1.25,
+      "order_type": "limit",
+      "quantity": 1,
+      "time_in_force": "day"
+    },
+    "result": {
+      "order_id": "00a52f5b-2ffd-4c8c-8d76-69ef1e60badb",
+      "status": "OrderStatus.PENDING_NEW",
+      "quantity": 1.0,
+      "order_type": "OrderType.LIMIT",
+      "submitted_at": "2025-11-11 18:49:51.166598+00:00",
+      "legs": 2
+    },
+    "portfolio_value": null
+  },
+  {
+    "decision_id": 3,
+    "timestamp": "2025-11-11T13:50:29.771180",
+    "reasoning": "Options trade executed via agent",
+    "action": "options_trade",
+    "parameters": {
+      "legs": [
+        {
+          "quantity": 1,
+          "side": "buy",
+          "strike_price": 683,
+          "symbol": "SPY251111C00683000",
+          "type": "call"
+        },
+        {
+          "quantity": 1,
+          "side": "sell",
+          "strike_price": 684,
+          "symbol": "SPY251111C00684000",
+          "type": "call"
+        }
+      ],
+      "limit_price": 1.2,
+      "order_type": "limit",
+      "quantity": 1,
+      "time_in_force": "day"
+    },
+    "result": {
+      "order_id": "4933a98c-435b-49f2-bc73-1617b9389214",
+      "status": "OrderStatus.PENDING_NEW",
+      "quantity": 1.0,
+      "order_type": "OrderType.LIMIT",
+      "submitted_at": "2025-11-11 18:50:29.792182+00:00",
+      "legs": 2
+    },
+    "portfolio_value": null
+  },
+  {
+    "decision_id": 4,
+    "timestamp": "2025-11-11T13:51:07.251235",
+    "reasoning": "Options trade executed via agent",
+    "action": "options_trade",
+    "parameters": {
+      "legs": [
+        {
+          "quantity": 1,
+          "side": "buy",
+          "strike_price": 683,
+          "symbol": "SPY251111C00683000"
+        },
+        {
+          "quantity": 1,
+          "side": "sell",
+          "strike_price": 684,
+          "symbol": "SPY251111C00684000"
+        }
+      ],
+      "limit_price": 1.2,
+      "order_type": "limit",
+      "quantity": 1,
+      "time_in_force": "day"
+    },
+    "result": {
+      "order_id": "e4e9db22-98db-48f4-a8c6-8b11c267f8ba",
+      "status": "OrderStatus.PENDING_NEW",
+      "quantity": 1.0,
+      "order_type": "OrderType.LIMIT",
+      "submitted_at": "2025-11-11 18:51:07.273769+00:00",
+      "legs": 2
+    },
+    "portfolio_value": null
+  },
+  {
+    "decision_id": 5,
+    "timestamp": "2025-11-11T13:51:45.970492",
+    "reasoning": "Options trade executed via agent",
+    "action": "options_trade",
+    "parameters": {
+      "legs": [
+        {
+          "quantity": 1,
+          "side": "buy",
+          "strike_price": 683,
+          "symbol": "SPY251111C00683000"
+        },
+        {
+          "quantity": 1,
+          "side": "sell",
+          "strike_price": 684,
+          "symbol": "SPY251111C00684000"
+        }
+      ],
+      "limit_price": 1.2,
+      "order_type": "limit",
+      "quantity": 1,
+      "time_in_force": "day"
+    },
+    "result": {
+      "order_id": "090f4166-c4fb-4d16-afa7-6bb7ca26e1a4",
+      "status": "OrderStatus.PENDING_NEW",
+      "quantity": 1.0,
+      "order_type": "OrderType.LIMIT",
+      "submitted_at": "2025-11-11 18:51:45.920965+00:00",
+      "legs": 2
+    },
+    "portfolio_value": null
+  },
+  {
+    "decision_id": 6,
+    "timestamp": "2025-11-11T13:52:26.129474",
+    "reasoning": "Options trade executed via agent",
+    "action": "options_trade",
+    "parameters": {
+      "legs": [
+        {
+          "quantity": 1,
+          "side": "buy",
+          "strike_price": 683,
+          "symbol": "SPY251111C00683000"
+        },
+        {
+          "quantity": 1,
+          "side": "sell",
+          "strike_price": 684,
+          "symbol": "SPY251111C00684000"
+        }
+      ],
+      "limit_price": 1.2,
+      "order_type": "limit",
+      "quantity": 1,
+      "time_in_force": "day"
+    },
+    "result": {
+      "order_id": "bcb0cb6c-4dc4-4555-a455-eb426ed6bffa",
+      "status": "OrderStatus.PENDING_NEW",
+      "quantity": 1.0,
+      "order_type": "OrderType.LIMIT",
+      "submitted_at": "2025-11-11 18:52:26.123621+00:00",
+      "legs": 2
+    },
+    "portfolio_value": null
+  },
+  {
+    "decision_id": 7,
+    "timestamp": "2025-11-11T13:54:28.755961",
+    "reasoning": "Options trade executed via agent",
+    "action": "options_trade",
+    "parameters": {
+      "legs": [
+        {
+          "quantity": 1,
+          "side": "buy",
+          "strike_price": 683,
+          "symbol": "SPY251111C00683000"
+        },
+        {
+          "quantity": 1,
+          "side": "sell",
+          "strike_price": 684,
+          "symbol": "SPY251111C00684000"
+        }
+      ],
+      "limit_price": 0.7,
+      "order_type": "limit",
+      "quantity": 1,
+      "time_in_force": "day"
+    },
+    "result": {
+      "order_id": "ca076679-1434-4992-ac74-af4bd54d482c",
+      "status": "OrderStatus.PENDING_NEW",
+      "quantity": 1.0,
+      "order_type": "OrderType.LIMIT",
+      "submitted_at": "2025-11-11 18:54:28.749396+00:00",
+      "legs": 2
+    },
+    "portfolio_value": null
+  }
+]

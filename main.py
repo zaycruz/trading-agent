@@ -21,8 +21,8 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="qwen2.5:latest",
-        help="Ollama model to use (default: qwen2.5:latest)"
+        default="qwen3:latest",
+        help="Ollama model to use (default: qwen3:latest)"
     )
     
     parser.add_argument(
@@ -48,13 +48,13 @@ def main():
     args = parser.parse_args()
     
     print("=" * 80)
-    print("🤖 AUTONOMOUS CRYPTO TRADING AGENT")
+    print("AUTONOMOUS CRYPTO TRADING AGENT")
     print("=" * 80)
     print(f"Model: {args.model}")
     print(f"Cycle Interval: {args.interval}s")
     print(f"Max Iterations: {args.max_iterations or 'Infinite'}")
     print("=" * 80)
-    print("\n⚠️  WARNING: This agent will make real trades on Alpaca!")
+    print("\nWARNING: This agent will make real trades on Alpaca!")
     print("Make sure you're using paper trading for testing.\n")
     print("Press Ctrl+C to stop the agent at any time.\n")
     print("=" * 80)
@@ -67,9 +67,9 @@ def main():
             verbose=not args.quiet
         )
     except KeyboardInterrupt:
-        print("\n\n✅ Agent stopped successfully")
+        print("\n\nAgent stopped successfully")
     except Exception as e:
-        print(f"\n\n❌ Agent crashed: {e}")
+        print(f"\n\nAgent crashed: {e}")
         raise
 
 

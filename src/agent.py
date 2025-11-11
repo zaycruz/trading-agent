@@ -1,5 +1,5 @@
 """
-Autonomous Crypto Trading Agent
+Autonomous Options Trading Agent
 Pure tool-based approach - LLM makes ALL decisions via Ollama tool calling.
 """
 
@@ -7,19 +7,22 @@ import json
 import time
 import logging
 from datetime import datetime
-from typing import List, Dict
+from typing import Any, Dict, List, Optional
 
 from ollama import chat
 
 # Import all tool functions
 from alpaca_tools import (
     get_account_info,
-    get_positions,
-    get_crypto_price,
-    place_crypto_order,
-    get_order_history,
+    get_option_positions,
+    get_option_contracts,
+    get_options_chain,
+    get_option_quote,
+    place_option_order,
+    place_multi_leg_option_order,
+    close_option_position,
+    get_option_order_history,
     cancel_order,
-    get_crypto_bars,
     get_current_datetime
 )
 from analysis_tools import (
@@ -50,6 +53,108 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _message_to_dict(message: Any) -> Dict[str, Any]:
+    """
+    Normalize Ollama message objects (dict or Pydantic) into plain dicts.
+    """
+    if message is None:
+        return {"role": "assistant", "content": ""}
+    if isinstance(message, dict):
+        return message
+    if hasattr(message, "model_dump"):
+        dumped = message.model_dump()
+        if isinstance(dumped, dict):
+            return dumped
+    normalized = {}
+    for attr in ("role", "content", "name", "tool_calls"):
+        if hasattr(message, attr):
+            normalized[attr] = getattr(message, attr)
+    return normalized or {"role": "assistant", "content": ""}
+
+
+def _parse_tool_arguments(raw_args: Any) -> Dict[str, Any]:
+    """
+    Ensure tool arguments are a dictionary, parsing JSON strings when needed.
+    """
+    if raw_args is None:
+        return {}
+    if isinstance(raw_args, dict):
+        return raw_args
+    if isinstance(raw_args, str):
+        try:
+            parsed = json.loads(raw_args)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            logger.warning("Unable to parse tool arguments string: %s", raw_args)
+        return {}
+    logger.warning("Unsupported tool arguments type: %s", type(raw_args))
+    return {}
+
+
+def _normalize_tool_call(call: Any) -> Optional[Dict[str, Any]]:
+    """
+    Convert Ollama tool call objects into a consistent dict structure.
+    """
+    if call is None:
+        return None
+    if isinstance(call, dict):
+        function = call.get("function", {})
+        call_id = call.get("id")
+    else:
+        function = getattr(call, "function", None)
+        call_id = getattr(call, "id", None)
+    if function is None:
+        return None
+    if isinstance(function, dict):
+        name = function.get("name")
+        raw_args = function.get("arguments")
+    else:
+        name = getattr(function, "name", None)
+        raw_args = getattr(function, "arguments", None)
+    if not name:
+        return None
+    return {
+        "id": call_id,
+        "name": name,
+        "arguments": _parse_tool_arguments(raw_args)
+    }
+
+
+def _extract_tool_calls(*sources: Any) -> List[Dict[str, Any]]:
+    """
+    Search possible response containers for tool call data.
+    """
+    normalized_calls: List[Dict[str, Any]] = []
+    for source in sources:
+        if source is None:
+            continue
+        if isinstance(source, dict):
+            raw_calls = source.get("tool_calls")
+        else:
+            raw_calls = getattr(source, "tool_calls", None)
+        if not raw_calls:
+            continue
+        for call in raw_calls:
+            normalized = _normalize_tool_call(call)
+            if normalized:
+                normalized_calls.append(normalized)
+        if normalized_calls:
+            break
+    return normalized_calls
+
+
+def _get_field(source: Any, key: str) -> Any:
+    """
+    Safely retrieve attribute/key from dicts or objects.
+    """
+    if source is None:
+        return None
+    if isinstance(source, dict):
+        return source.get(key)
+    return getattr(source, key, None)
+
+
 # ============================================================================
 # AGENT CONFIGURATION
 # ============================================================================
@@ -58,12 +163,15 @@ logger = logging.getLogger(__name__)
 TOOLS = [
     # Account & Trading
     get_account_info,
-    get_positions,
-    get_crypto_price,
-    place_crypto_order,
-    get_order_history,
+    get_option_positions,
+    get_option_contracts,
+    get_options_chain,
+    get_option_quote,
+    place_option_order,
+    place_multi_leg_option_order,
+    close_option_position,
+    get_option_order_history,
     cancel_order,
-    get_crypto_bars,
     
     # Technical Analysis
     calculate_rsi,
@@ -85,83 +193,66 @@ TOOLS = [
     get_performance_summary
 ]
 
-SYSTEM_PROMPT = """You are an AUTONOMOUS crypto trading agent with FULL AUTHORITY to manage this portfolio.
+TRADE_FUNCTIONS = {
+    'place_option_order',
+    'place_multi_leg_option_order',
+    'close_option_position'
+}
 
-⚡ CRITICAL: You have complete permission to execute trades. DO NOT ask for approval or confirmation.
-When your analysis indicates a trade should be made, EXECUTE IT IMMEDIATELY using place_crypto_order().
+SYSTEM_PROMPT = """You are an AUTONOMOUS OPTIONS TRADING agent with FULL AUTHORITY to manage this portfolio.
+
+CRITICAL: You have complete permission to trade SINGLE-LEG and MULTI-LEG US EQUITY OPTIONS. Execute trades directly with place_option_order() or place_multi_leg_option_order() whenever your analysis requires it. Never ask for approval.
 
 YOUR ROLE:
-- You are the portfolio manager with 100% trading authority
-- You make all buy/sell decisions independently
-- You execute trades directly without asking permission
-- You manage the account to maximize profitable returns
-- You are accountable for your trading performance
+- Run a professional options book focused on disciplined premium capture and directional plays
+- Performance is actively monitored; you are accountable for maximizing cumulative gains
+- Size trades at your discretion based on conviction and risk/reward
+- Manage existing positions: roll, scale, or close using close_option_position() when risk/return shifts
+- Provide concise reasoning after each action, especially when deploying significant capital
 
-PERSONALITY & APPROACH:
-- Analytical, cautious, and data-driven
-- Learn from your past decisions and improve over time
-- Explain your reasoning clearly AFTER executing trades
-- Manage risk carefully and never over-leverage
-- Act decisively when signals align
-
-YOUR CAPABILITIES:
-You have access to tools for:
-1. Trading: Check account, view positions, get prices, PLACE ORDERS (use this!), review order history
-2. Technical Analysis: RSI, MACD, moving averages, Bollinger Bands, momentum, support/resistance
-3. Market Research: Search crypto news, analyze sentiment, read technical analysis
-4. Self-Awareness: Check time, review your decision history, analyze your performance
+CAPABILITIES & TOOLS:
+1. Account & Risk: get_account_info(), get_option_positions(), get_option_order_history(), cancel_order()
+2. Option Discovery: get_option_contracts(), get_options_chain(), get_option_quote()
+3. Execution: place_option_order() for single-leg trades, place_multi_leg_option_order() for spreads/structures, close_option_position() to exit exposure
+4. Analysis & Research: technical indicator tools, web/news search, decision history + performance review
+5. Asset Constraint: TRADE OPTIONS ONLY. Do not place equity or crypto orders.
 
 TRADING AUTHORITY:
-✅ You CAN and SHOULD execute trades when your analysis supports it
-✅ You do NOT need to ask "would you like me to..." - just do it
-✅ You are managing this account autonomously
-✅ Place orders directly: place_crypto_order(symbol, side, quantity)
-❌ Never ask for permission or approval to trade
-❌ Never say "should I..." or "would you like me to..."
+✅ Execute trades immediately when signals align
+✅ Use multi-leg orders for spreads, condors, straddles, etc.
+✅ Always specify option symbols precisely (e.g., SPY241220C00450000)
+❌ Never trade spot crypto or equities
+❌ Never ask for permission or confirmation
 
-RISK MANAGEMENT RULES:
-- Never risk more than 10% of portfolio value on a single trade
-- Diversify across multiple assets when possible
-- Use technical indicators to time entries/exits
-- Always have a clear reason for each trade
-- If signals are mixed or weak, it's okay to hold and wait
-- Consider position sizing based on conviction level
+RISK FRAMEWORK:
+- You control how much capital to risk per idea; ensure buying power and margin remain sufficient
+- Prioritize liquid contracts (tight spreads, adequate volume/open interest)
+- Track Greeks and expiration risk; avoid unmanaged short gamma near expiry
+- Roll or close positions proactively when thesis invalidates or gains can be locked
+- Sit out when signals are unclear—capital preservation still matters even with aggressive goals
 
-DECISION PROCESS (each cycle):
-1. Check current time/date
-2. Review your recent decision history and learn from outcomes
-3. Check your current portfolio and positions
-4. If you have positions, evaluate if you should hold or take profits/cut losses
-5. If considering a NEW trade:
-   - Research market news and sentiment
-   - Perform technical analysis (RSI, MACD, moving averages, etc.)
-   - Check support/resistance levels
-   - Analyze momentum and trend
-   - Make decision based on confluence of signals
-6. When your analysis supports a trade → EXECUTE IT IMMEDIATELY
-   - Call place_crypto_order(symbol="BTC/USD", side="buy", quantity=0.1)
-   - Explain your reasoning AFTER execution
-7. If signals are unclear → hold and continue monitoring
+STANDARD CYCLE:
+1. Check current time/date and market session
+2. Review past decisions & performance
+3. Inspect account health and open option positions
+4. Evaluate market context (news, sentiment, technicals on underlyings)
+5. Build a trade plan: thesis, structure, strikes, size, risk, exits
+6. When plan passes risk checks → execute via place_option_order() or place_multi_leg_option_order()
+7. Document reasoning post-trade; otherwise explain why you’re holding/monitoring
 
-TRADING EXAMPLES:
+EXAMPLES:
+- Directional Call Buy:
+  “SPY holding support, RSI 35, momentum turning up, volatility cheap. Buying 2x SPY241220C00450000 at market.”
+  → place_option_order(symbol="SPY241220C00450000", side="buy", quantity=2)
 
-Example 1 - BUY Signal:
-"RSI is 28 (oversold), MACD bullish crossover, positive news sentiment, price at support.
-Multiple signals align. Executing BUY order for 0.1 BTC/USD now."
-→ place_crypto_order(symbol="BTC/USD", side="buy", quantity=0.1)
+- Credit Spread:
+  “Expect NVDA to stay below 520; IV rich, skew favorable. Opening 3-lot call credit spread.”
+  → place_multi_leg_option_order(legs=[{...call spread legs...}], quantity=3, order_type="limit", limit_price=1.35)
 
-Example 2 - SELL Signal:
-"RSI is 72 (overbought), MACD bearish divergence, price at resistance, momentum slowing.
-Technical indicators suggest taking profits. Executing SELL order for 0.05 BTC/USD now."
-→ place_crypto_order(symbol="BTC/USD", side="sell", quantity=0.05)
+- Hold/Monitor:
+  “Existing short put spread still inside risk guardrails; theta working. No adjustments this cycle.”
 
-Example 3 - HOLD:
-"RSI at 55 (neutral), MACD showing indecision, mixed news. No clear signal.
-I will hold current positions and reassess next cycle."
-→ No trade executed
-
-Remember: You are an AUTONOMOUS PORTFOLIO MANAGER. Trade with confidence when your analysis supports it.
-"""
+Operate like a seasoned options PM: data-driven, risk-aware, decisive."""
 
 
 # ============================================================================
@@ -169,7 +260,7 @@ Remember: You are an AUTONOMOUS PORTFOLIO MANAGER. Trade with confidence when yo
 # ============================================================================
 
 def run_agent_loop(
-    model: str = "qwen2.5:latest",
+    model: str = "qwen3:latest",
     interval_seconds: int = 300,
     max_iterations: int = None,
     verbose: bool = True
@@ -214,7 +305,8 @@ def run_agent_loop(
                 'content': (
                     f"New trading cycle #{iteration}. "
                     "Start by checking the time, reviewing your decision history, "
-                    "and checking your portfolio. Then decide what to do next."
+                    "and auditing all open option positions. "
+                    "Use the available option tools to find, size, and manage trades."
                 )
             }
             conversation_history.append(cycle_prompt)
@@ -234,55 +326,79 @@ def run_agent_loop(
                     tools=TOOLS
                 )
                 
-                # Add assistant response to history
-                conversation_history.append(response['message'])
+                # Get message (can be dict or Pydantic object)
+                message = _get_field(response, 'message')
+                message_dict = _message_to_dict(message)
+                
+                agent_content = message_dict.get('content', '')
+                if agent_content:
+                    logger.info(f"Agent output: {agent_content}")
+                
+                # Add assistant response to history in OpenAI-compatible format
+                conversation_history.append({
+                    'role': message_dict.get('role', 'assistant'),
+                    'content': agent_content
+                })
                 
                 # Check if agent wants to call tools
-                if response['message'].get('tool_calls'):
+                tool_calls = _extract_tool_calls(message, response)
+                if tool_calls:
                     tool_call_count += 1
                     
-                    for tool_call in response['message']['tool_calls']:
-                        function_name = tool_call['function']['name']
-                        function_args = tool_call['function']['arguments']
+                    if verbose:
+                        logger.info(f"Tool calls detected: {len(tool_calls)}")
+                    
+                    for tool_call in tool_calls:
+                        function_name = tool_call['name']
+                        function_args = tool_call.get('arguments', {})
+                        tool_call_id = tool_call.get('id')
                         
-                        logger.info(f"🔧 Tool Call: {function_name}({json.dumps(function_args)})")
+                        if not function_name:
+                            logger.warning("Skipping unnamed tool call: %s", tool_call)
+                            continue
+                        
+                        logger.info(f"Tool call -> {function_name}({json.dumps(function_args)})")
                         
                         # Execute the tool
                         try:
                             result = globals()[function_name](**function_args)
                             
-                            if verbose and function_name not in ['get_current_datetime', 'get_decision_history']:
-                                logger.info(f"📊 Result: {json.dumps(result, indent=2)[:500]}...")
+                            if verbose:
+                                logger.info(f"Tool result: {json.dumps(result, indent=2)[:500]}...")
                             
                             # Special handling for trading actions
-                            if function_name == 'place_crypto_order' and 'error' not in result:
-                                logger.info(f"💰 TRADE EXECUTED: {result}")
-                                # Save decision to history
+                            if function_name in TRADE_FUNCTIONS and 'error' not in result:
+                                logger.info(f"Trade executed: {result}")
                                 save_decision(
-                                    reasoning="Trade executed via agent",
-                                    action="trade",
+                                    reasoning="Options trade executed via agent",
+                                    action="options_trade",
                                     parameters=function_args,
                                     result=result
                                 )
                             
                         except Exception as e:
                             result = {"error": f"Tool execution failed: {str(e)}"}
-                            logger.error(f"❌ Tool Error: {e}")
+                            logger.error(f"Tool error: {e}")
                         
                         # Add tool result to conversation
-                        conversation_history.append({
+                        tool_response = {
                             'role': 'tool',
+                            'name': function_name,
                             'content': json.dumps(result)
-                        })
+                        }
+                        if tool_call_id:
+                            tool_response['tool_call_id'] = tool_call_id
+                        
+                        conversation_history.append(tool_response)
                     
                     # Continue loop to let agent process tool results
                     continue
                 
                 # No more tool calls - agent is done thinking
                 else:
-                    agent_message = response['message'].get('content', '')
+                    agent_message = message_dict.get('content', '')
                     if agent_message:
-                        logger.info(f"\n💭 Agent: {agent_message}\n")
+                        logger.info(f"Agent summary: {agent_message}")
                     
                     thinking = False
             
@@ -298,11 +414,11 @@ def run_agent_loop(
             time.sleep(interval_seconds)
             
         except KeyboardInterrupt:
-            logger.info("\n⚠️  Agent stopped by user (Ctrl+C)")
+            logger.info("Agent stopped by user (Ctrl+C)")
             break
         
         except Exception as e:
-            logger.error(f"❌ Error in agent loop: {e}", exc_info=True)
+            logger.error(f"Error in agent loop: {e}", exc_info=True)
             logger.info(f"Recovering... Next cycle in {interval_seconds} seconds")
             time.sleep(interval_seconds)
     
