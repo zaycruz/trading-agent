@@ -237,5 +237,40 @@
       "legs": 2
     },
     "portfolio_value": null
+  },
+  {
+    "decision_id": 8,
+    "timestamp": "2025-11-11T13:55:16.534095",
+    "reasoning": "Options trade executed via agent",
+    "action": "options_trade",
+    "parameters": {
+      "legs": [
+        {
+          "quantity": 1,
+          "side": "buy",
+          "strike_price": 683,
+          "symbol": "SPY251111C00683000"
+        },
+        {
+          "quantity": 1,
+          "side": "sell",
+          "strike_price": 684,
+          "symbol": "SPY251111C00684000"
+        }
+      ],
+      "limit_price": 0.7,
+      "order_type": "limit",
+      "quantity": 1,
+      "time_in_force": "day"
+    },
+    "result": {
+      "order_id": "1cbe131a-dfd6-4718-9d28-0d277035380d",
+      "status": "OrderStatus.PENDING_NEW",
+      "quantity": 1.0,
+      "order_type": "OrderType.LIMIT",
+      "submitted_at": "2025-11-11 18:55:16.509407+00:00",
+      "legs": 2
+    },
+    "portfolio_value": null
   }
 ]
