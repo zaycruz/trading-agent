@@ -170,7 +170,7 @@ uv run python -m src.main
 ## Project Structure
 
 ```
-trading-arena/
+trading-agent/
 ├── src/
 │   ├── __init__.py
 │   ├── tools.py              # Main trading tools library

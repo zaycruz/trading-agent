@@ -25,7 +25,7 @@ A **pure tool-based autonomous crypto trading agent** that uses Qwen 3 (via Olla
 ## File Structure
 
 ```
-trading-arena/
+trading-agent/
 ├── main.py                      # -  Entry point - updated with CLI args
 ├── pyproject.toml              # -  Updated with tavily-python dependency
 ├── .env.example                # -  Updated with TAVILY_API_KEY

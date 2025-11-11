@@ -3,16 +3,16 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "trading-arena"
+name = "trading-agent"
 version = "0.1.0"
 description = "Autonomous options trader with Alpaca integration for Ollama models"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Trading Arena Team", email = "team@trading-arena.dev"}
+    {name = "Trading Agent Team", email = "team@trading-agent.dev"}
 ]
 maintainers = [
-    {name = "Trading Arena Team", email = "team@trading-arena.dev"}
+    {name = "Trading Agent Team", email = "team@trading-agent.dev"}
 ]
 keywords = [
     "trading",
@@ -81,13 +81,13 @@ lint = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-username/trading-arena"
-Documentation = "https://trading-arena.readthedocs.io"
-Repository = "https://github.com/your-username/trading-arena.git"
-"Bug Tracker" = "https://github.com/your-username/trading-arena/issues"
+Homepage = "https://github.com/zaycruz/trading-agent"
+Documentation = "https://trading-agent.readthedocs.io"
+Repository = "https://github.com/zaycruz/trading-agent.git"
+"Bug Tracker" = "https://github.com/zaycruz/trading-agent/issues"
 
 [project.scripts]
-trading-arena = "src.main:main"
+trading-agent = "src.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
