@@ -21,26 +21,26 @@ def run_uv_command(cmd, description, check=True):
         full_cmd = ["uv"] + cmd
         result = subprocess.run(full_cmd, check=check, capture_output=False)
         if result.returncode == 0:
-            print(f"✅ {description} completed successfully")
+            print(f"-  {description} completed successfully")
             return True
         else:
-            print(f"❌ {description} failed with exit code {result.returncode}")
+            print(f"-  {description} failed with exit code {result.returncode}")
             return False
     except subprocess.CalledProcessError as e:
-        print(f"❌ {description} failed with exit code {e.returncode}")
+        print(f"-  {description} failed with exit code {e.returncode}")
         return False
     except FileNotFoundError:
-        print(f"❌ 'uv' command not found. Please install uv: https://docs.astral.sh/uv/")
+        print(f"-  'uv' command not found. Please install uv: https://docs.astral.sh/uv/")
         return False
 
 
 def setup_project():
     """Set up the project with uv"""
-    print("🚀 Setting up Trading Arena with UV")
+    print(" Setting up Trading Arena with UV")
 
     # Check if uv is installed
     if not run_uv_command(["--version"], "Checking UV installation", check=False):
-        print("❌ UV not found. Please install UV:")
+        print("-  UV not found. Please install UV:")
         print("  curl -LsSf https://astral.sh/uv/install.sh | sh")
         print("  # or on Windows:"
         print("  powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\"")
@@ -48,24 +48,24 @@ def setup_project():
 
     # Create virtual environment
     if not run_uv_command(["venv"], "Creating virtual environment"):
-        print("⚠️  Virtual environment may already exist")
+        print("WARNING:   Virtual environment may already exist")
 
     # Install dependencies
     if not run_uv_command(["sync"], "Installing dependencies"):
-        print("❌ Failed to install dependencies")
+        print("-  Failed to install dependencies")
         return False
 
     # Install development dependencies
     if not run_uv_command(["sync", "--group", "dev"], "Installing dev dependencies"):
-        print("❌ Failed to install dev dependencies")
+        print("-  Failed to install dev dependencies")
         return False
 
     # Install test dependencies
     if not run_uv_command(["sync", "--group", "test"], "Installing test dependencies"):
-        print("❌ Failed to install test dependencies")
+        print("-  Failed to install test dependencies")
         return False
 
-    print("✅ Project setup complete!")
+    print("-  Project setup complete!")
     return True
 
 
@@ -115,9 +115,9 @@ def lint_code():
         success = False
 
     if success:
-        print("✅ All linting checks passed!")
+        print("-  All linting checks passed!")
     else:
-        print("❌ Some linting checks failed. Run 'python uv_run.py format' to fix formatting.")
+        print("-  Some linting checks failed. Run 'python uv_run.py format' to fix formatting.")
 
     return success
 
@@ -135,7 +135,7 @@ def format_code():
         success = False
 
     if success:
-        print("✅ Code formatted successfully!")
+        print("-  Code formatted successfully!")
 
     return success
 
@@ -202,7 +202,7 @@ def main():
 
     # Check if we're in the right directory
     if not Path("pyproject.toml").exists():
-        print("❌ Error: pyproject.toml not found. Please run from project root.")
+        print("-  Error: pyproject.toml not found. Please run from project root.")
         sys.exit(1)
 
     # Change to project root if needed

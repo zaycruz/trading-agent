@@ -4,11 +4,11 @@
 
 This is a **pure tool-based autonomous crypto trading agent** powered by Qwen 3 (or any Ollama model) that makes ALL trading decisions via tool calling. The agent has:
 
-- ✅ **No hardcoded trading logic** - All decisions come from the LLM
-- ✅ **Full context awareness** - Remembers past decisions and learns from them
-- ✅ **Temporal awareness** - Knows the current time/date for market timing
-- ✅ **Self-reflective** - Reviews its own performance and improves
-- ✅ **Tool-driven** - Trading, analysis, and research via tool calls
+- **No hardcoded trading logic** - All decisions come from the LLM
+- **Full context awareness** - Remembers past decisions and learns from them
+- **Temporal awareness** - Knows the current time/date for market timing
+- **Self-reflective** - Reviews its own performance and improves
+- **Tool-driven** - Trading, analysis, and research via tool calls
 
 ## Architecture
 
@@ -154,15 +154,15 @@ The agent can call these tools autonomously:
 
 **Cycle 1:**
 ```
-🔧 Tool Call: get_current_datetime()
-🔧 Tool Call: get_decision_history(limit=10)
-🔧 Tool Call: get_account_info()
-🔧 Tool Call: get_positions()
-🔧 Tool Call: search_crypto_news(query="Bitcoin market news today")
-🔧 Tool Call: calculate_rsi(symbol="BTC/USD", period=14)
-🔧 Tool Call: calculate_macd(symbol="BTC/USD")
+Tool Call: get_current_datetime()
+Tool Call: get_decision_history(limit=10)
+Tool Call: get_account_info()
+Tool Call: get_positions()
+Tool Call: search_crypto_news(query="Bitcoin market news today")
+Tool Call: calculate_rsi(symbol="BTC/USD", period=14)
+Tool Call: calculate_macd(symbol="BTC/USD")
 
-💭 Agent: Based on my analysis:
+Agent: Based on my analysis:
 - RSI is at 32 (oversold)
 - MACD shows bullish crossover
 - News sentiment is positive
@@ -170,8 +170,8 @@ The agent can call these tools autonomously:
 
 I will buy 0.05 BTC at current market price.
 
-🔧 Tool Call: place_crypto_order(symbol="BTC/USD", side="buy", quantity=0.05)
-💰 TRADE EXECUTED: {"order_id": "...", "status": "filled"}
+Tool Call: place_crypto_order(symbol="BTC/USD", side="buy", quantity=0.05)
+TRADE EXECUTED: {"order_id": "...", "status": "filled"}
 ```
 
 ## Decision History
@@ -225,9 +225,9 @@ Different intervals for different strategies:
 The agent logs all actions:
 ```
 2025-11-10 14:30:00 - INFO - TRADING CYCLE #5
-2025-11-10 14:30:01 - INFO - 🔧 Tool Call: get_current_datetime({})
-2025-11-10 14:30:02 - INFO - 🔧 Tool Call: calculate_rsi({"symbol": "BTC/USD"})
-2025-11-10 14:30:03 - INFO - 💭 Agent: RSI indicates oversold conditions...
+2025-11-10 14:30:01 - INFO - Tool Call: get_current_datetime({})
+2025-11-10 14:30:02 - INFO - Tool Call: calculate_rsi({"symbol": "BTC/USD"})
+2025-11-10 14:30:03 - INFO - Agent: RSI indicates oversold conditions...
 ```
 
 ### Check Performance
@@ -274,11 +274,11 @@ uv run python main.py --max-iterations 1 --interval 0
 
 Unlike traditional trading bots with hardcoded if/else logic:
 ```python
-# ❌ Traditional Bot (hardcoded)
+# Traditional Bot (hardcoded)
 if rsi < 30:
     buy()
 
-# ✅ This Agent (LLM decides)
+# This Agent (LLM decides)
 # Agent calls calculate_rsi(), analyzes result, decides to buy or not
 ```
 
@@ -299,7 +299,7 @@ Agent knows:
 
 ## Safety Warning
 
-⚠️ **IMPORTANT:**
+**IMPORTANT:**
 - Start with paper trading
 - Test thoroughly before live trading
 - Monitor the agent actively

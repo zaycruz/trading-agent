@@ -24,7 +24,7 @@ try:
         options={'temperature': 0}
     )
     
-    print("\n✅ Response received")
+    print("\n-  Response received")
     
     # Handle Pydantic Message object
     message = response['message']
@@ -32,17 +32,17 @@ try:
     print(f"Message attributes: {dir(message)}")
     
     if hasattr(message, 'tool_calls') and message.tool_calls:
-        print("\n✅ Tool calls detected!")
+        print("\n-  Tool calls detected!")
         tool_calls = message.tool_calls
         print(f"Number of tool calls: {len(tool_calls)}")
         for tc in tool_calls:
             print(f"  - Function: {tc.function.name}")
             print(f"  - Arguments: {tc.function.arguments}")
     else:
-        print("\n❌ NO TOOL CALLS - Model generated text instead:")
+        print("\n-  NO TOOL CALLS - Model generated text instead:")
         print(f"Content: {getattr(message, 'content', 'No content')}")
         
 except Exception as e:
-    print(f"\n❌ Error: {e}")
+    print(f"\n-  Error: {e}")
     import traceback
     traceback.print_exc()

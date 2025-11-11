@@ -2,7 +2,7 @@
 
 This directory contains a comprehensive test suite for the autonomous options trader tools.
 
-## 📁 Test Structure
+## Test Structure
 
 ```
 tests/
@@ -16,7 +16,7 @@ tests/
 └── README.md                   # This file
 ```
 
-## 🧪 Test Categories
+## Test Categories
 
 ### Unit Tests
 - **Portfolio Analysis** (`test_portfolio_analysis.py`)
@@ -53,7 +53,7 @@ tests/
   - Proper mock delegation
   - Function signature verification
 
-## 🛠️ Running Tests
+## Running Tests
 
 ### Quick Start
 ```bash
@@ -97,7 +97,7 @@ pytest tests/ --lf
 pytest tests/ -m "unit"
 ```
 
-## 📊 Test Coverage
+## Test Coverage
 
 The test suite covers:
 
@@ -107,43 +107,43 @@ The test suite covers:
 - **Business Logic**: Risk calculations, position sizing, strategy validation
 - **Integration**: End-to-end workflows and data consistency
 
-## 🎯 Key Test Scenarios
+## Key Test Scenarios
 
 ### Portfolio Analysis
-- ✅ Account information retrieval
-- ✅ Position list processing
-- ✅ P&L calculations
-- ✅ Concentration analysis
-- ✅ Risk level assignments
-- ✅ Empty portfolio handling
-- ✅ API error handling
+- Account information retrieval
+- Position list processing
+- P&L calculations
+- Concentration analysis
+- Risk level assignments
+- Empty portfolio handling
+- API error handling
 
 ### Options Trading
-- ✅ Current price fetching
-- ✅ Options contract screening
-- ✅ Market and limit orders
-- ✅ Position closing
-- ✅ Multi-leg strategy creation
-- ✅ Strategy validation
-- ✅ Order error handling
+- -  Current price fetching
+- -  Options contract screening
+- -  Market and limit orders
+- -  Position closing
+- -  Multi-leg strategy creation
+- -  Strategy validation
+- -  Order error handling
 
 ### Risk Management
-- ✅ Buying power validation
-- ✅ Position risk calculation
-- ✅ Trade approval logic
-- ✅ Portfolio concentration limits
-- ✅ Position concentration limits
-- ✅ Risk level assignments
-- ✅ Portfolio diversification scoring
+- -  Buying power validation
+- -  Position risk calculation
+- -  Trade approval logic
+- -  Portfolio concentration limits
+- -  Position concentration limits
+- -  Risk level assignments
+- -  Portfolio diversification scoring
 
 ### Integration
-- ✅ Complete trading workflows
-- ✅ Data consistency across modules
-- ✅ Error propagation
-- ✅ Standalone function integration
-- ✅ Performance metrics tracking
+- -  Complete trading workflows
+- -  Data consistency across modules
+- -  Error propagation
+- -  Standalone function integration
+- -  Performance metrics tracking
 
-## 🔧 Test Configuration
+## Test Configuration
 
 ### Fixtures (`conftest.py`)
 - **Mock Trading Configuration**: API keys and endpoints
@@ -157,7 +157,7 @@ The test suite covers:
 - Warning suppression
 - Custom markers
 
-## 🚨 Test Dependencies
+## Test Dependencies
 
 Required packages for testing:
 ```bash
@@ -170,7 +170,7 @@ pydantic>=2.0.0
 python-dotenv>=0.19.0
 ```
 
-## 📝 Writing New Tests
+## Writing New Tests
 
 ### Test Naming Convention
 ```python
@@ -202,7 +202,7 @@ def test_api_call_mocking(self, trading_tools_with_mocks):
     assert result["order_id"] == "order_123"
 ```
 
-## 🐛 Debugging Tests
+## Debugging Tests
 
 ### Running Tests in Debug Mode
 ```bash
@@ -227,16 +227,16 @@ def test_debug_example(self, trading_tools_with_mocks):
 - Use `-s` flag to see print statements
 - Use `--tb=short` for concise tracebacks
 
-## 📈 Continuous Integration
+## Continuous Integration
 
 These tests are designed to run in CI/CD environments:
-- ✅ No external API dependencies (all mocked)
-- ✅ Deterministic results
-- ✅ Fast execution
-- ✅ Clear error reporting
-- ✅ Coverage reporting support
+- -  No external API dependencies (all mocked)
+- -  Deterministic results
+- -  Fast execution
+- -  Clear error reporting
+- -  Coverage reporting support
 
-## 🔍 Test Data
+## Test Data
 
 All test data is mocked to ensure:
 - **Consistency**: Same data across test runs
@@ -244,7 +244,7 @@ All test data is mocked to ensure:
 - **Reliability**: No external service dependencies
 - **Privacy**: No real account data exposure
 
-## 🎉 Best Practices
+## Best Practices
 
 1. **Mock Everything**: All external API calls should be mocked
 2. **Test Edge Cases**: Include error conditions and boundary values
@@ -254,7 +254,7 @@ All test data is mocked to ensure:
 6. **Cleanup After Tests**: Use fixtures and teardown methods
 7. **Test Documentation**: Include docstrings explaining test purpose
 
-## 📞 Support
+## Support
 
 If you encounter issues with the tests:
 1. Check that all dependencies are installed

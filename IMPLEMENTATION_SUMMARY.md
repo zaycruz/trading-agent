@@ -26,20 +26,20 @@ A **pure tool-based autonomous crypto trading agent** that uses Qwen 3 (via Olla
 
 ```
 trading-arena/
-├── main.py                      # ✅ Entry point - updated with CLI args
-├── pyproject.toml              # ✅ Updated with tavily-python dependency
-├── .env.example                # ✅ Updated with TAVILY_API_KEY
-├── AGENT_USAGE.md              # ✅ NEW - Comprehensive usage guide
-├── IMPLEMENTATION_SUMMARY.md   # ✅ NEW - This file
+├── main.py                      # -  Entry point - updated with CLI args
+├── pyproject.toml              # -  Updated with tavily-python dependency
+├── .env.example                # -  Updated with TAVILY_API_KEY
+├── AGENT_USAGE.md              # -  NEW - Comprehensive usage guide
+├── IMPLEMENTATION_SUMMARY.md   # -  NEW - This file
 ├── data/
 │   └── decision_history.json   # Created automatically by agent
 └── src/
     ├── __init__.py             # Module init
-    ├── agent.py                # ✅ REFACTORED - Recursive agent loop
-    ├── alpaca_tools.py         # ✅ REFACTORED - Crypto trading tools
-    ├── analysis_tools.py       # ✅ NEW - Technical analysis tools
-    ├── web_search.py           # ✅ NEW - Tavily market research
-    └── decision_history.py     # ✅ NEW - Decision tracking
+    ├── agent.py                # -  REFACTORED - Recursive agent loop
+    ├── alpaca_tools.py         # -  REFACTORED - Crypto trading tools
+    ├── analysis_tools.py       # -  NEW - Technical analysis tools
+    ├── web_search.py           # -  NEW - Tavily market research
+    └── decision_history.py     # -  NEW - Decision tracking
 ```
 
 ## Tools Available to Agent (20 Total)
@@ -74,32 +74,32 @@ trading-arena/
 
 ## Key Features Implemented
 
-### ✅ Pure Tool-Based (No Hardcoded Logic)
+### -  Pure Tool-Based (No Hardcoded Logic)
 ```python
 # Agent decides everything via tools
 # Example cycle:
-🔧 get_current_datetime()
-🔧 get_decision_history(limit=10)
-🔧 get_positions()
-🔧 search_crypto_news(query="Bitcoin latest")
-🔧 calculate_rsi(symbol="BTC/USD")
-💭 Agent: "RSI is 28, oversold. News is positive. I'll buy 0.1 BTC"
-🔧 place_crypto_order(symbol="BTC/USD", side="buy", quantity=0.1)
+-  get_current_datetime()
+-  get_decision_history(limit=10)
+-  get_positions()
+-  search_crypto_news(query="Bitcoin latest")
+-  calculate_rsi(symbol="BTC/USD")
+-  Agent: "RSI is 28, oversold. News is positive. I'll buy 0.1 BTC"
+-  place_crypto_order(symbol="BTC/USD", side="buy", quantity=0.1)
 ```
 
-### ✅ Recursive Loop with Context
+### -  Recursive Loop with Context
 - Agent remembers past decisions
 - Learns from previous trades
 - Reviews performance each cycle
 - Maintains conversation history
 
-### ✅ Temporal Awareness
+### -  Temporal Awareness
 - Knows current date/time
 - Tracks time since last trade
 - All decisions timestamped
 - Historical performance tracking
 
-### ✅ Technical Analysis
+### -  Technical Analysis
 - RSI (oversold/overbought detection)
 - MACD (crossover signals)
 - Moving Averages (trend analysis)
@@ -107,20 +107,20 @@ trading-arena/
 - Support/Resistance levels
 - Price Momentum
 
-### ✅ Market Research (Tavily)
+### -  Market Research (Tavily)
 - Real-time crypto news search
 - Market sentiment analysis
 - Technical analysis discussions
 - General web search capability
 
-### ✅ Decision History
+### -  Decision History
 - All decisions saved with timestamps
 - Reasoning captured
 - Results tracked
 - Performance metrics calculated
 - Agent reviews history each cycle
 
-### ✅ Risk Management
+### -  Risk Management
 - Built into system prompt
 - 10% max per trade guideline
 - Diversification encouraged
@@ -161,7 +161,7 @@ trading-arena/
 
 **Cycle 3:**
 ```
-💭 "It's Monday 9:30 AM. I reviewed my history - I bought BTC at $42k 
+-  "It's Monday 9:30 AM. I reviewed my history - I bought BTC at $42k 
     2 cycles ago. Current price is $43.2k (+2.8% gain). 
 
     Let me check technical indicators:
@@ -175,7 +175,7 @@ trading-arena/
     Risk management: This reduces my crypto exposure from 15% to 7.5% 
     of portfolio, which is healthy."
 
-🔧 place_crypto_order(symbol="BTC/USD", side="sell", quantity=0.05)
+-  place_crypto_order(symbol="BTC/USD", side="sell", quantity=0.05)
 ```
 
 ## Running the Agent
@@ -276,23 +276,23 @@ uv run python -c "from src.agent import run_agent_loop, TOOLS; print(f'{len(TOOL
 ## Key Differences from Original
 
 ### Before (src/tools.py)
-- ❌ Options trading focused
-- ❌ Class-based structure
-- ❌ No agent loop
-- ❌ No decision history
-- ❌ No web search
-- ❌ Limited TA tools
+- -  Options trading focused
+- -  Class-based structure
+- -  No agent loop
+- -  No decision history
+- -  No web search
+- -  Limited TA tools
 
 ### After (New Architecture)
-- ✅ Crypto trading focused
-- ✅ Pure function-based tools
-- ✅ Recursive agent loop
-- ✅ Decision history with timestamps
-- ✅ Tavily web search integration
-- ✅ Comprehensive TA tools (6 indicators)
-- ✅ Context awareness
-- ✅ Temporal tracking
-- ✅ Self-reflective learning
+- -  Crypto trading focused
+- -  Pure function-based tools
+- -  Recursive agent loop
+- -  Decision history with timestamps
+- -  Tavily web search integration
+- -  Comprehensive TA tools (6 indicators)
+- -  Context awareness
+- -  Temporal tracking
+- -  Self-reflective learning
 
 ## Implementation Highlights
 
@@ -341,16 +341,16 @@ while True:
 
 ## Success Criteria Met
 
-✅ Qwen 3 integration via Ollama  
-✅ Pure tool-based decision making (no hardcoded logic)  
-✅ Recursive loop with context awareness  
-✅ Temporal tracking (timestamps everywhere)  
-✅ Alpaca crypto trading tools  
-✅ Tavily web search for market research  
-✅ Technical analysis tools (6 indicators)  
-✅ Decision history with learning capability  
-✅ Clean architecture (functions, not classes)  
-✅ Comprehensive documentation  
+-  Qwen 3 integration via Ollama  
+-  Pure tool-based decision making (no hardcoded logic)  
+-  Recursive loop with context awareness  
+-  Temporal tracking (timestamps everywhere)  
+-  Alpaca crypto trading tools  
+-  Tavily web search for market research  
+-  Technical analysis tools (6 indicators)  
+-  Decision history with learning capability  
+-  Clean architecture (functions, not classes)  
+-  Comprehensive documentation  
 
 ## Architecture Philosophy
 

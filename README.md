@@ -2,34 +2,34 @@
 
 A comprehensive suite of Alpaca trading tools designed for autonomous options trading with Ollama models.
 
-**🚀 Powered by UV - The extremely fast Python package manager**
+**Powered by UV - The extremely fast Python package manager**
 
 ## Features
 
-### 📊 Portfolio Analysis
+### Portfolio Analysis
 - Account information and buying power
 - Position tracking and P&L analysis
 - Portfolio concentration metrics
 - Risk assessment
 
-### 🔍 Options Screening
+### Options Screening
 - Options chain fetching
 - Volume and open interest filtering
 - DTE (Days to Expiration) filtering
 - Strike price range screening
 
-### 💰 Options Trading
+### Options Trading
 - Buy/sell options contracts
 - Market and limit orders
 - Position closing
 
-### 🎯 Multi-Leg Strategies
+### Multi-Leg Strategies
 - Vertical spreads (credit/debit)
 - Iron condors
 - Straddles
 - Strangles
 
-### ⚠️ Risk Management
+### Risk Management
 - Position sizing validation
 - Portfolio concentration limits
 - Buying power checks
@@ -204,14 +204,14 @@ By default, the tools use Alpaca's paper trading environment for safe testing.
 ## UV Benefits
 
 Using UV provides several advantages:
-- ⚡ **Lightning Fast** - 10-100x faster than pip
-- 🔧 **Reliable** - Deterministic dependency resolution
-- 📦 **Modern** - Supports pyproject.toml and dependency groups
-- 🌍 **Cross-platform** - Works on macOS, Linux, and Windows
-- 🚀 **Zero-config** - No virtualenv management needed
+- **Lightning Fast** - 10-100x faster than pip
+- **Reliable** - Deterministic dependency resolution
+- **Modern** - Supports pyproject.toml and dependency groups
+- **Cross-platform** - Works on macOS, Linux, and Windows
+- **Zero-config** - No virtualenv management needed
 
 ## Note
 
 This is designed for use with autonomous agents and LLMs. All functions return structured data that's easy for AI models to process and act upon.
 
-⚠️ **Always test thoroughly with paper trading before using real funds.**
+**Always test thoroughly with paper trading before using real funds.**
