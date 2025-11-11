@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime, timedelta
 
-from src.tools import AlpacaTradingTools, get_account_info, analyze_portfolio, screen_options, buy_option, validate_trade_risk
+from alpaca_tools import AlpacaTradingTools, get_account_info, analyze_portfolio, screen_options, buy_option, validate_trade_risk
 
 
 class TestIntegrationWorkflow:

@@ -7,7 +7,7 @@ import pytest
 from unittest.mock import Mock, MagicMock
 from dataclasses import dataclass
 
-from src.tools import AlpacaTradingTools, TradingConfig, Position, OptionContract
+from alpaca_tools import AlpacaTradingTools, TradingConfig, Position, OptionContract
 
 
 @pytest.fixture

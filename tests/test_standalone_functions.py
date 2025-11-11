@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import Mock, patch
 
 # Import the standalone functions
-from src.tools import (
+from alpaca_tools import (
     get_account_info,
     analyze_portfolio,
     get_positions,
@@ -49,7 +49,7 @@ class TestStandaloneFunctions:
     @patch('src.tools.trading_tools')
     def test_get_positions_function(self, mock_trading_tools):
         """Test standalone get_positions function"""
-        from src.tools import Position
+        from alpaca_tools import Position
         mock_positions = [Position("SPY", 100, "long", 45000.0, 40000.0, 5000.0, 0.125)]
         mock_trading_tools.get_positions.return_value = mock_positions
 

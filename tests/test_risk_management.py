@@ -5,7 +5,7 @@ Tests for risk management functionality
 import pytest
 from unittest.mock import Mock
 
-from src.tools import AlpacaTradingTools
+from alpaca_tools import AlpacaTradingTools
 
 
 class TestRiskManagement:

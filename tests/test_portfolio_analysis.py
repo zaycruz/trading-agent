@@ -5,7 +5,7 @@ Tests for portfolio analysis functionality
 import pytest
 from unittest.mock import Mock, patch
 
-from src.tools import AlpacaTradingTools, Position
+from alpaca_tools import AlpacaTradingTools, Position
 
 
 class TestPortfolioAnalysis:

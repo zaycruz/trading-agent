@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime, timedelta
 
-from src.tools import AlpacaTradingTools, OptionContract, OptionType, OptionStrategy
+from alpaca_tools import AlpacaTradingTools, OptionContract, OptionType, OptionStrategy
 
 
 class TestOptionsTrading:
