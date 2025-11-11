@@ -28,8 +28,8 @@ def main():
     parser.add_argument(
         "--interval",
         type=int,
-        default=300,
-        help="Seconds between trading cycles (default: 300)"
+        default=0,
+        help="Seconds between trading cycles (default: 0 for continuous trading)"
     )
     
     parser.add_argument(
@@ -51,7 +51,10 @@ def main():
     print("AUTONOMOUS CRYPTO TRADING AGENT")
     print("=" * 80)
     print(f"Model: {args.model}")
-    print(f"Cycle Interval: {args.interval}s")
+    if args.interval > 0:
+        print(f"Cycle Interval: {args.interval}s")
+    else:
+        print("Cycle Interval: continuous (no delay)")
     print(f"Max Iterations: {args.max_iterations or 'Infinite'}")
     print("=" * 80)
     print("\nWARNING: This agent will make real trades on Alpaca!")

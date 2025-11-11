@@ -403,15 +403,19 @@ def run_agent_loop(
                     thinking = False
             
             logger.info(f"Cycle complete. Made {tool_call_count} tool calls.")
-            logger.info(f"Next cycle in {interval_seconds} seconds...\n")
+            if interval_seconds > 0:
+                logger.info(f"Next cycle in {interval_seconds} seconds...\n")
+            else:
+                logger.info("Next cycle starting immediately...\n")
             
             # Limit conversation history size (keep last 50 messages)
             if len(conversation_history) > 50:
                 # Keep system prompt + recent messages
                 conversation_history = [conversation_history[0]] + conversation_history[-49:]
             
-            # Wait before next cycle
-            time.sleep(interval_seconds)
+            # Wait before next cycle if delay configured
+            if interval_seconds > 0:
+                time.sleep(interval_seconds)
             
         except KeyboardInterrupt:
             logger.info("Agent stopped by user (Ctrl+C)")
@@ -419,8 +423,11 @@ def run_agent_loop(
         
         except Exception as e:
             logger.error(f"Error in agent loop: {e}", exc_info=True)
-            logger.info(f"Recovering... Next cycle in {interval_seconds} seconds")
-            time.sleep(interval_seconds)
+            if interval_seconds > 0:
+                logger.info(f"Recovering... Next cycle in {interval_seconds} seconds")
+                time.sleep(interval_seconds)
+            else:
+                logger.info("Recovering... restarting immediately")
     
     logger.info("\n" + "=" * 80)
     logger.info("AGENT STOPPED")
