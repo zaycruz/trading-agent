@@ -33,7 +33,8 @@ from analysis_tools import (
     get_price_momentum,
     get_support_resistance,
     analyze_multi_timeframes,
-    analyze_multi_timeframes
+    analyze_option_greeks,
+    screen_options_market
 )
 from web_search import (
     get_market_sentiment,
@@ -43,7 +44,8 @@ from web_search import (
 from decision_history import (
     save_decision,
     get_decision_history,
-    get_performance_summary
+    get_performance_summary,
+    get_daily_pnl
 )
 
 # Setup logging
@@ -182,6 +184,8 @@ TOOLS = [
     get_price_momentum,
     get_support_resistance,
     analyze_multi_timeframes,
+    analyze_option_greeks,
+    screen_options_market,
     
     # Market Research
     get_market_sentiment,
@@ -191,7 +195,8 @@ TOOLS = [
     # Context & History
     get_current_datetime,
     get_decision_history,
-    get_performance_summary
+    get_performance_summary,
+    get_daily_pnl
 ]
 
 TRADE_FUNCTIONS = {
@@ -199,6 +204,70 @@ TRADE_FUNCTIONS = {
     'place_multi_leg_option_order',
     'close_option_position'
 }
+
+
+def _format_open_positions_summary() -> str:
+    """
+    Pull current option positions once per cycle and format for the prompt.
+    """
+    try:
+        positions = get_option_positions()
+    except Exception as exc:  # Best-effort fetch; fall back to agent tools if needed
+        return f"Open option positions: unable to fetch ({exc}). Use get_option_positions() manually."
+
+    if not positions:
+        return "Open option positions: none."
+
+    if isinstance(positions, list) and positions and "error" in positions[0]:
+        return f"Open option positions: {positions[0].get('error')}. Call get_option_positions() manually."
+
+    lines = []
+    for idx, pos in enumerate(positions, start=1):
+        symbol = pos.get("symbol", "UNKNOWN")
+        qty = pos.get("quantity", 0)
+        side = pos.get("side", "flat")
+        strike = pos.get("strike_price")
+        expiry = pos.get("expiration_date")
+        mv = pos.get("market_value")
+        lines.append(
+            f"{idx}. {symbol} | qty {qty} ({side}) | strike {strike} | exp {expiry} | MV {mv}"
+        )
+    return "Open option positions snapshot:\n" + "\n".join(lines)
+
+
+def _format_performance_summary() -> str:
+    """
+    Retrieve daily/weekly/monthly performance snapshots for immediate context.
+    """
+    windows = {
+        "Daily": 1,
+        "Weekly": 7,
+        "Monthly": 30
+    }
+    lines = []
+    for label, days in windows.items():
+        try:
+            summary = get_performance_summary(window_days=days)
+        except Exception as exc:
+            lines.append(f"{label}: unavailable ({exc})")
+            continue
+
+        if not isinstance(summary, dict) or "error" in summary:
+            lines.append(f"{label}: unavailable ({summary.get('error') if isinstance(summary, dict) else 'unknown error'})")
+            continue
+
+        pnl = summary.get("net_pnl", 0)
+        pnl_pct = summary.get("portfolio_change_pct")
+        hit_rate = summary.get("win_rate")
+
+        parts = [
+            f"PnL ${round(pnl, 2)}",
+            f"{round(pnl_pct, 2)}%" if pnl_pct is not None else "Pct n/a",
+            f"HR {round(hit_rate, 1)}%" if hit_rate is not None else "HR n/a"
+        ]
+        lines.append(f"{label}: " + ", ".join(parts))
+
+    return "Performance snapshot (rolling):\n" + "\n".join(lines)
 
 SYSTEM_PROMPT = """You are an AUTONOMOUS OPTIONS TRADING agent with FULL AUTHORITY to manage this portfolio.
 
@@ -279,6 +348,10 @@ FEW-SHOT TOOL EXAMPLES (thought → tool → follow-up):
   Thought: “Need levels for stop placement.” → Action: get_support_resistance(symbol="MSFT", timeframe="4h") → Follow-up: “Support 405, resistance 422; align strikes.”
 - Multi-Timeframe Stack (analyze_multi_timeframes):
   Thought: “Align 4h/1h trends before short gamma.” → Action: analyze_multi_timeframes(symbol="GOOGL", timeframes=["1d","4h","1h"]) → Follow-up: “All bullish; avoid new call credit spreads.”
+- Greeks Rollup (analyze_option_greeks):
+  Thought: “Need net delta/theta for near-term SPY contracts.” → Action: analyze_option_greeks(underlying="SPY", expiration_date="2024-08-16", limit=12) → Follow-up: “Average theta -0.09, delta skewed long; size spreads to stay near flat.”
+- Options Screener (screen_options_market):
+  Thought: “Filter liquid tickers under 30 DTE.” → Action: screen_options_market(underlyings=["SPY","QQQ","IWM"], min_open_interest=1000, max_days_to_expiration=30) → Follow-up: “Top candidates loaded; focus research on these strikes.”
 - Sentiment Pulse (get_market_sentiment):
   Thought: “Gauge overall risk appetite.” → Action: get_market_sentiment() → Follow-up: “Greed index elevated; tighten upside risk.”
 - Technical Research (search_technical_analysis):
@@ -289,6 +362,8 @@ FEW-SHOT TOOL EXAMPLES (thought → tool → follow-up):
   Thought: “Review last five trades before repeating mistakes.” → Action: get_decision_history(limit=5) → Follow-up: “Last theta plays clustered in tech; diversify.”
 - Performance Summary (get_performance_summary):
   Thought: “Quantify hit rate before upping size.” → Action: get_performance_summary(window_days=30) → Follow-up: “Win rate 62%, avg pnl $420, maintain sizing.”
+- Daily P/L Log (get_daily_pnl):
+  Thought: “Check if today is green before adding risk.” → Action: get_daily_pnl(limit=7) → Follow-up: “Down $350 today, wait for better entries.”
 
 EXAMPLES:
 - Directional Call Buy:
@@ -348,6 +423,9 @@ def run_agent_loop(
             logger.info(f"\n{'=' * 80}")
             logger.info(f"TRADING CYCLE #{iteration} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             logger.info(f"{'=' * 80}\n")
+
+            positions_summary = _format_open_positions_summary()
+            performance_summary = _format_performance_summary()
             
             # Prompt agent for new cycle
             cycle_prompt = {
@@ -356,7 +434,9 @@ def run_agent_loop(
                     f"New trading cycle #{iteration}. "
                     "Start by checking the time, reviewing your decision history, "
                     "and auditing all open option positions. "
-                    "Use the available option tools to find, size, and manage trades."
+                    "Use the available option tools to find, size, and manage trades.\n\n"
+                    f"{positions_summary}\n\n"
+                    f"{performance_summary}"
                 )
             }
             conversation_history.append(cycle_prompt)

@@ -59,6 +59,8 @@ trading-agent/
 - `calculate_rsi()`, `calculate_macd()`, `calculate_moving_averages()`
 - `calculate_bollinger_bands()`, `get_price_momentum()`, `get_support_resistance()`
 - `analyze_multi_timeframes()` for top-down confirmation
+- `analyze_option_greeks()` for chain-level delta/theta/vega stats
+- `screen_options_market()` for liquidity & DTE filtering
 
 ### Market Research (Tavily)
 - `get_market_sentiment()` for risk appetite checks
@@ -68,6 +70,7 @@ trading-agent/
 ### Context & Awareness
 - `get_current_datetime()` - Temporal awareness
 - `get_decision_history()` / `get_performance_summary()` - Learning + performance
+- `get_daily_pnl()` - Rolling P/L log for risk context
 
 ## Key Features Implemented
 

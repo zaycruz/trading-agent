@@ -4,12 +4,129 @@ All functions designed to be called by LLM via Ollama tool calling.
 Uses pandas and numpy for calculations.
 """
 
+import math
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 # Import from alpaca_tools to get price data
-from alpaca_tools import get_price_bars
+from alpaca_tools import (
+    get_price_bars,
+    get_options_chain,
+    get_option_quote,
+    get_option_contracts
+)
+
+DEFAULT_RISK_FREE_RATE = 0.03
+
+
+def _parse_expiration(expiration_str: str) -> Optional[datetime]:
+    if not expiration_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(expiration_str)
+    except ValueError:
+        try:
+            dt = datetime.fromisoformat(expiration_str.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _norm_pdf(x: float) -> float:
+    return (1.0 / math.sqrt(2 * math.pi)) * math.exp(-0.5 * x * x)
+
+
+def _norm_cdf(x: float) -> float:
+    return 0.5 * (1 + math.erf(x / math.sqrt(2)))
+
+
+def _black_scholes_price(is_call: bool, s: float, k: float, t: float, r: float, sigma: float) -> float:
+    if s <= 0 or k <= 0 or t <= 0 or sigma <= 0:
+        return 0.0
+    d1 = (math.log(s / k) + (r + 0.5 * sigma ** 2) * t) / (sigma * math.sqrt(t))
+    d2 = d1 - sigma * math.sqrt(t)
+    if is_call:
+        return s * _norm_cdf(d1) - k * math.exp(-r * t) * _norm_cdf(d2)
+    return k * math.exp(-r * t) * _norm_cdf(-d2) - s * _norm_cdf(-d1)
+
+
+def _implied_volatility(target_price: float, is_call: bool, s: float, k: float, t: float, r: float) -> Optional[float]:
+    if target_price is None or target_price <= 0 or s <= 0 or k <= 0 or t <= 0:
+        return None
+
+    intrinsic = max(0.0, s - k) if is_call else max(0.0, k - s)
+    if target_price <= intrinsic + 1e-4:
+        return 1e-4
+
+    low, high = 1e-4, 5.0
+    for _ in range(80):
+        mid = (low + high) / 2
+        price = _black_scholes_price(is_call, s, k, t, r, mid)
+        if abs(price - target_price) < 1e-4:
+            return mid
+        if price > target_price:
+            high = mid
+        else:
+            low = mid
+    return mid
+
+
+def _compute_black_scholes_greeks(is_call: bool, s: float, k: float, t: float, r: float, sigma: float) -> Dict[str, float]:
+    if s <= 0 or k <= 0 or t <= 0 or sigma is None or sigma <= 0:
+        return {}
+    d1 = (math.log(s / k) + (r + 0.5 * sigma ** 2) * t) / (sigma * math.sqrt(t))
+    d2 = d1 - sigma * math.sqrt(t)
+    delta = _norm_cdf(d1) if is_call else _norm_cdf(d1) - 1
+    gamma = _norm_pdf(d1) / (s * sigma * math.sqrt(t))
+    vega = s * _norm_pdf(d1) * math.sqrt(t) / 100  # per 1% change
+    theta = (
+        (-s * _norm_pdf(d1) * sigma) / (2 * math.sqrt(t))
+        - r * k * math.exp(-r * t) * _norm_cdf(d2 if is_call else -d2)
+    ) / 365
+    rho = (k * t * math.exp(-r * t) * _norm_cdf(d2)) / 100 if is_call else (-k * t * math.exp(-r * t) * _norm_cdf(-d2)) / 100
+    return {
+        "delta": round(delta, 4),
+        "gamma": round(gamma, 6),
+        "theta": round(theta, 4),
+        "vega": round(vega, 4),
+        "rho": round(rho, 4),
+        "implied_volatility": round(sigma, 4)
+    }
+
+
+def _approximate_greeks_from_price(
+    option_type: str,
+    underlying_price: Optional[float],
+    strike_price: Optional[float],
+    expiration_date: Optional[str],
+    option_mid_price: Optional[float],
+    risk_free_rate: float = DEFAULT_RISK_FREE_RATE
+) -> Dict[str, Optional[float]]:
+    if (
+        underlying_price is None
+        or strike_price is None
+        or option_mid_price is None
+        or expiration_date is None
+    ):
+        return {}
+    expiration_dt = _parse_expiration(expiration_date)
+    if not expiration_dt:
+        return {}
+    now = datetime.now(timezone.utc)
+    t = (expiration_dt - now).total_seconds() / (365 * 24 * 3600)
+    if t <= 0:
+        return {}
+    option_type = (option_type or "").lower()
+    is_call = "call" in option_type or option_type.endswith("c")
+    sigma = _implied_volatility(option_mid_price, is_call, underlying_price, strike_price, t, risk_free_rate)
+    if sigma is None or sigma <= 0:
+        return {}
+    return _compute_black_scholes_greeks(is_call, underlying_price, strike_price, t, risk_free_rate, sigma)
 
 
 # ============================================================================
@@ -436,3 +553,214 @@ def analyze_multi_timeframes(
         }
     except Exception as e:
         return {"error": f"Failed multi-timeframe analysis: {str(e)}"}
+
+
+def analyze_option_greeks(
+    underlying: str,
+    expiration_date: Optional[str] = None,
+    contract_type: Optional[str] = None,
+    limit: int = 10
+) -> Dict:
+    """
+    Aggregate option greeks from an options chain snapshot.
+    """
+    try:
+        chain = get_options_chain(
+            underlying_symbol=underlying,
+            expiration_date=expiration_date,
+            contract_type=contract_type,
+            limit=limit
+        )
+        if "error" in chain:
+            return chain
+
+        contracts = chain.get("contracts", [])
+        reference_price = chain.get("reference_price")
+        greek_fields = ["delta", "gamma", "theta", "vega", "rho", "implied_volatility"]
+        totals = {field: 0.0 for field in greek_fields}
+        counts = {field: 0 for field in greek_fields}
+        coverage_denominator = max(len(contracts), 1)
+        analyzed_contracts: List[Dict] = []
+        approximation_used = False
+        avg_open_interest = []
+        avg_mid_prices = []
+        avg_spreads = []
+
+        for contract in contracts:
+            quote = get_option_quote(contract["symbol"])
+            row = {
+                "symbol": contract["symbol"],
+                "type": contract.get("type"),
+                "strike_price": contract.get("strike_price"),
+                "expiration_date": contract.get("expiration_date"),
+                "open_interest": contract.get("open_interest"),
+            }
+                "greeks_source": "feed"
+            }
+            if "error" in quote:
+                row["error"] = quote["error"]
+            else:
+                for field in ["mid_price", "bid_price", "ask_price"]:
+                    row[field] = quote.get(field)
+                bid = row.get("bid_price")
+                ask = row.get("ask_price")
+                if bid is not None and ask is not None:
+                    spread = round(ask - bid, 4)
+                    row["bid_ask_spread"] = spread
+                    avg_spreads.append(spread)
+                mid = row.get("mid_price")
+                if mid is not None:
+                    avg_mid_prices.append(mid)
+                oi = row.get("open_interest")
+                if oi is not None:
+                    avg_open_interest.append(oi)
+
+                for field in greek_fields:
+                    value = quote.get(field)
+                    if value is not None:
+                        row[field] = value
+                        totals[field] += value
+                        counts[field] += 1
+
+                missing_greeks = all(row.get(field) is None for field in greek_fields)
+                if missing_greeks:
+                    approx = _approximate_greeks_from_price(
+                        option_type=row.get("type"),
+                        underlying_price=reference_price,
+                        strike_price=row.get("strike_price"),
+                        expiration_date=row.get("expiration_date"),
+                        option_mid_price=row.get("mid_price"),
+                        risk_free_rate=DEFAULT_RISK_FREE_RATE
+                    )
+                    if approx:
+                        approximation_used = True
+                        row["greeks_source"] = "approximation"
+                        for field in greek_fields:
+                            value = approx.get(field)
+                            if value is not None:
+                                row[field] = value
+                                totals[field] += value
+                                counts[field] += 1
+                    else:
+                        row["greeks_source"] = "unavailable"
+
+            analyzed_contracts.append(row)
+
+        summary = {
+            f"avg_{field}": (totals[field] / counts[field]) if counts[field] else None
+            for field in greek_fields
+        }
+        coverage = {
+            field: round(counts[field] / coverage_denominator, 2)
+            for field in greek_fields
+        }
+        summary["coverage"] = coverage
+        if approximation_used:
+            summary["notes"] = "Approximate greeks computed via Black-Scholes for contracts lacking feed data."
+        elif all(counts[field] == 0 for field in greek_fields):
+            summary["notes"] = "Data provider returned no greek fields for the requested slice."
+
+        return {
+            "underlying": underlying,
+            "reference_price": chain.get("reference_price"),
+            "contracts_analyzed": len(analyzed_contracts),
+            "summary": summary,
+            "liquidity": {
+                "avg_open_interest": round(sum(avg_open_interest) / len(avg_open_interest), 2) if avg_open_interest else None,
+                "avg_mid_price": round(sum(avg_mid_prices) / len(avg_mid_prices), 4) if avg_mid_prices else None,
+                "avg_bid_ask_spread": round(sum(avg_spreads) / len(avg_spreads), 4) if avg_spreads else None
+            },
+            "contracts": analyzed_contracts,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        return {"error": f"Failed to analyze option greeks: {str(e)}"}
+
+
+def screen_options_market(
+    underlyings: List[str],
+    min_open_interest: int = 500,
+    max_days_to_expiration: int = 45,
+    moneyness_tolerance: float = 0.1,
+    contract_type: Optional[str] = None,
+    max_contracts_per_symbol: int = 5
+) -> Dict:
+    """
+    Lightweight options screener to narrow trading focus.
+    Filters by open interest, days to expiration, and moneyness.
+    """
+    try:
+        today = datetime.now(timezone.utc).date()
+        screened: List[Dict] = []
+
+        for symbol in underlyings:
+            price_data = get_price_bars(symbol, timeframe="1Day", limit=1)
+            reference_price = None
+            if "error" not in price_data:
+                closes = price_data.get("data", {}).get("close", [])
+                if closes:
+                    reference_price = closes[-1]
+
+            contracts = get_option_contracts(
+                underlying_symbol=symbol,
+                contract_type=contract_type,
+                limit=200
+            )
+            if isinstance(contracts, list) and contracts and "error" in contracts[0]:
+                continue
+
+            filtered: List[Dict] = []
+            for contract in contracts:
+                expiration_raw = contract.get("expiration_date")
+                if not expiration_raw:
+                    continue
+                try:
+                    exp_date = datetime.fromisoformat(expiration_raw.replace("Z", "+00:00")).date()
+                except ValueError:
+                    continue
+                dte = (exp_date - today).days
+                if dte < 0 or dte > max_days_to_expiration:
+                    continue
+                if contract.get("open_interest", 0) < min_open_interest:
+                    continue
+
+                if reference_price:
+                    moneyness = abs(contract.get("strike_price") - reference_price) / reference_price
+                    if moneyness > moneyness_tolerance:
+                        continue
+                else:
+                    moneyness = None
+
+                filtered.append({
+                    "underlying": symbol,
+                    "symbol": contract.get("symbol"),
+                    "type": contract.get("type"),
+                    "strike_price": contract.get("strike_price"),
+                    "expiration_date": expiration_raw,
+                    "days_to_expiration": dte,
+                    "open_interest": contract.get("open_interest"),
+                    "close_price": contract.get("close_price"),
+                    "moneyness": moneyness
+                })
+
+            filtered.sort(key=lambda c: c.get("open_interest", 0), reverse=True)
+            screened.extend(filtered[:max_contracts_per_symbol])
+
+        screened.sort(key=lambda c: c.get("open_interest", 0), reverse=True)
+
+        return {
+            "results": screened,
+            "summary": {
+                "total_underlyings": len(underlyings),
+                "candidates": len(screened),
+                "criteria": {
+                    "min_open_interest": min_open_interest,
+                    "max_days_to_expiration": max_days_to_expiration,
+                    "moneyness_tolerance": moneyness_tolerance,
+                    "contract_type": contract_type,
+                    "max_contracts_per_symbol": max_contracts_per_symbol
+                }
+            }
+        }
+    except Exception as e:
+        return {"error": f"Failed to screen options: {str(e)}"}

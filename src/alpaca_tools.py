@@ -51,6 +51,13 @@ _trading_client = None
 _stock_data_client = None
 _option_data_client = None
 
+
+def _safe_float(value: Any) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
 def _get_trading_client():
     """Lazy initialization of trading client"""
     global _trading_client
@@ -319,9 +326,22 @@ def get_option_quote(symbol: str) -> Dict[str, Any]:
         quote = quotes.get(symbol)
         if not quote:
             return {"symbol": symbol, "error": "No option quote data available"}
-        bid = float(quote.bid_price) if quote.bid_price else None
-        ask = float(quote.ask_price) if quote.ask_price else None
-        mid = (bid + ask) / 2 if bid and ask else None
+        bid = _safe_float(getattr(quote, "bid_price", None))
+        ask = _safe_float(getattr(quote, "ask_price", None))
+        mid = (bid + ask) / 2 if bid is not None and ask is not None else None
+
+        greeks_source = getattr(quote, "greeks", None) or quote
+        greeks = {
+            "delta": _safe_float(getattr(greeks_source, "delta", None)),
+            "gamma": _safe_float(getattr(greeks_source, "gamma", None)),
+            "theta": _safe_float(getattr(greeks_source, "theta", None)),
+            "vega": _safe_float(getattr(greeks_source, "vega", None)),
+            "rho": _safe_float(getattr(greeks_source, "rho", None)),
+            "implied_volatility": _safe_float(
+                getattr(greeks_source, "iv", None) or getattr(greeks_source, "implied_volatility", None)
+            )
+        }
+
         return {
             "symbol": symbol,
             "bid_price": bid,
@@ -329,7 +349,13 @@ def get_option_quote(symbol: str) -> Dict[str, Any]:
             "mid_price": mid,
             "bid_size": int(quote.bid_size) if quote.bid_size else None,
             "ask_size": int(quote.ask_size) if quote.ask_size else None,
-            "timestamp": str(quote.timestamp) if quote.timestamp else None
+            "timestamp": str(quote.timestamp) if getattr(quote, "timestamp", None) else None,
+            "delta": greeks["delta"],
+            "gamma": greeks["gamma"],
+            "theta": greeks["theta"],
+            "vega": greeks["vega"],
+            "rho": greeks["rho"],
+            "implied_volatility": greeks["implied_volatility"]
         }
     except Exception as e:
         return {"error": f"Failed to get option quote for {symbol}: {str(e)}"}
@@ -463,10 +489,13 @@ def close_option_position(symbol: str, quantity: Optional[int] = None) -> Dict[s
         close_request = ClosePositionRequest(
             qty=str(quantity) if quantity is not None else None
         )
-        result = client.close_position(
-            symbol_or_asset_id=symbol,
-            close_options=close_request
-        )
+        # Validate that an open position exists before attempting to close.
+        try:
+            client.get_open_position(symbol)
+        except Exception as lookup_error:
+            return {"error": f"No open position found for {symbol}: {lookup_error}"}
+
+        result = client.close_position(symbol_or_asset_id=symbol, close_options=close_request)
         return {
             "order_id": str(getattr(result, "id", "")),
             "symbol": str(getattr(result, "symbol", symbol)),

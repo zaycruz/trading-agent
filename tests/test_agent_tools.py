@@ -29,14 +29,16 @@ from analysis_tools import (
     calculate_bollinger_bands,
     get_price_momentum,
     get_support_resistance,
-    analyze_multi_timeframes
+    analyze_multi_timeframes,
+    analyze_option_greeks,
+    screen_options_market
 )
 from web_search import (
     get_market_sentiment,
     search_technical_analysis,
     search_general_web
 )
-from decision_history import save_decision, get_decision_history, get_performance_summary
+from decision_history import save_decision, get_decision_history, get_performance_summary, get_daily_pnl
 
 
 # ---------------------------------------------------------------------------
@@ -427,6 +429,79 @@ def test_analyze_multi_timeframes(monkeypatch):
     assert result["summary"]["dominant_trend"] in {"bullish", "bearish", "neutral"}
 
 
+def test_analyze_option_greeks(monkeypatch):
+    sample_chain = {
+        "reference_price": 450.0,
+        "contracts": [
+            {"symbol": "SPY1", "type": "call", "strike_price": 455.0, "expiration_date": "2024-08-16", "open_interest": 1500},
+            {"symbol": "SPY2", "type": "put", "strike_price": 445.0, "expiration_date": "2024-08-16", "open_interest": 1800},
+        ]
+    }
+    quotes = {
+        "SPY1": {"mid_price": 2.5, "bid_price": 2.45, "ask_price": 2.55, "delta": 0.42, "gamma": 0.02, "theta": -0.08, "vega": 0.11, "rho": 0.01, "implied_volatility": 0.23},
+        "SPY2": {"mid_price": 2.2, "bid_price": 2.1, "ask_price": 2.3, "delta": -0.38, "gamma": 0.018, "theta": -0.07, "vega": 0.12, "rho": -0.015, "implied_volatility": 0.25},
+    }
+    monkeypatch.setattr(analysis_tools, "get_options_chain", lambda **kwargs: sample_chain)
+    monkeypatch.setattr(analysis_tools, "get_option_quote", lambda symbol: quotes[symbol])
+
+    result = analyze_option_greeks("SPY", expiration_date="2024-08-16", limit=2)
+    assert result["contracts_analyzed"] == 2
+    assert result["summary"]["avg_delta"] == pytest.approx((0.42 - 0.38) / 2)
+
+
+def test_analyze_option_greeks_fallback(monkeypatch):
+    sample_chain = {
+        "reference_price": 450.0,
+        "contracts": [
+            {"symbol": "SPY1", "type": "call", "strike_price": 455.0, "expiration_date": "2024-08-16", "open_interest": 1000},
+        ]
+    }
+    quotes = {
+        "SPY1": {"mid_price": 2.5, "bid_price": 2.45, "ask_price": 2.55}
+    }
+    monkeypatch.setattr(analysis_tools, "get_options_chain", lambda **kwargs: sample_chain)
+    monkeypatch.setattr(analysis_tools, "get_option_quote", lambda symbol: quotes[symbol])
+    monkeypatch.setattr(
+        analysis_tools,
+        "_approximate_greeks_from_price",
+        lambda **kwargs: {"delta": 0.5, "gamma": 0.02, "theta": -0.05, "vega": 0.1, "rho": 0.01, "implied_volatility": 0.2}
+    )
+
+    result = analyze_option_greeks("SPY", expiration_date="2024-08-16", limit=1)
+    assert result["summary"]["avg_delta"] == pytest.approx(0.5)
+    assert result["contracts"][0]["greeks_source"] == "approximation"
+    assert "notes" in result["summary"]
+
+
+def test_screen_options_market(monkeypatch):
+    monkeypatch.setattr(analysis_tools, "get_price_bars", lambda symbol, timeframe="1Day", limit=1: {
+        "data": {"close": [450.0]}
+    })
+    contracts = [
+        {
+            "symbol": "SPY1",
+            "type": "call",
+            "strike_price": 452.0,
+            "expiration_date": datetime.now().strftime("%Y-%m-%d"),
+            "open_interest": 1200,
+            "close_price": 2.5
+        },
+        {
+            "symbol": "SPY2",
+            "type": "put",
+            "strike_price": 420.0,
+            "expiration_date": datetime.now().strftime("%Y-%m-%d"),
+            "open_interest": 50,
+            "close_price": 1.1
+        },
+    ]
+    monkeypatch.setattr(analysis_tools, "get_option_contracts", lambda **kwargs: contracts)
+
+    result = screen_options_market(["SPY"], min_open_interest=200, max_days_to_expiration=60, moneyness_tolerance=0.1)
+    assert result["summary"]["candidates"] == 1
+    assert result["results"][0]["symbol"] == "SPY1"
+
+
 # ---------------------------------------------------------------------------
 # Web search tool tests
 # ---------------------------------------------------------------------------
@@ -493,3 +568,8 @@ def test_decision_history_round_trip(tmp_path, monkeypatch):
     summary = get_performance_summary()
     assert summary["total_decisions"] == 2
     assert summary["portfolio_change_pct"] == pytest.approx(2.0)
+
+    daily = get_daily_pnl()
+    assert daily["days"]
+    first_day = daily["days"][0]
+    assert "pnl" in first_day

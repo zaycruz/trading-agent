@@ -143,6 +143,9 @@ The agent can call these tools autonomously:
 - `calculate_bollinger_bands(symbol)` - Volatility bands
 - `get_price_momentum(symbol, periods)` - Price momentum
 - `get_support_resistance(symbol)` - Key price levels
+- `analyze_multi_timeframes(symbol, timeframes)` - Trend stack view
+- `analyze_option_greeks(underlying, expiration)` - Chain-based greek rollup
+- `screen_options_market(underlyings, filters)` - Liquidity/moneyness screener
 
 ### Market Research Tools (Tavily)
 - `get_market_sentiment(symbol)` - Sentiment analysis
@@ -153,6 +156,7 @@ The agent can call these tools autonomously:
 - `get_current_datetime()` - Time/date awareness
 - `get_decision_history(limit)` - Review past decisions
 - `get_performance_summary()` - Performance metrics
+- `get_daily_pnl(limit)` - Rolling daily P/L log
 
 ## Example Agent Behavior
 

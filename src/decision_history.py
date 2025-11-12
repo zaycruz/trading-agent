@@ -7,6 +7,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
+from collections import defaultdict
 
 # History file location
 HISTORY_FILE = Path(__file__).parent.parent / "data" / "decision_history.json"
@@ -158,6 +159,93 @@ def get_performance_summary() -> Dict:
         return performance
     except Exception as e:
         return {"error": f"Failed to get performance summary: {str(e)}"}
+
+
+def get_daily_pnl(limit: int = 30) -> Dict:
+    """
+    Aggregate daily P/L using the portfolio_value captured in decisions.
+    
+    Args:
+        limit: Number of most recent days to include (default: 30)
+    
+    Returns:
+        {
+            "days": [
+                {
+                    "date": "2024-10-01",
+                    "start_value": 100000,
+                    "end_value": 101200,
+                    "pnl": 1200,
+                    "pnl_percent": 1.2,
+                    "decisions": 5
+                },
+                ...
+            ]
+        }
+    """
+    try:
+        history = _load_history()
+        if not history:
+            return {"days": [], "message": "No history available"}
+
+        daily_entries: Dict[str, Dict] = {}
+
+        for decision in history:
+            pv = decision.get("portfolio_value")
+            ts = decision.get("timestamp")
+            if pv is None or not ts:
+                continue
+            try:
+                dt = datetime.fromisoformat(ts)
+            except ValueError:
+                try:
+                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+            day = dt.date().isoformat()
+
+            bucket = daily_entries.setdefault(
+                day,
+                {
+                    "date": day,
+                    "start_value": pv,
+                    "end_value": pv,
+                    "first_ts": dt,
+                    "last_ts": dt,
+                    "decisions": 0
+                }
+            )
+
+            # Update start/end values based on timestamps
+            if dt < bucket["first_ts"]:
+                bucket["first_ts"] = dt
+                bucket["start_value"] = pv
+            if dt > bucket["last_ts"]:
+                bucket["last_ts"] = dt
+                bucket["end_value"] = pv
+
+            bucket["decisions"] += 1
+
+        if not daily_entries:
+            return {"days": [], "message": "No portfolio values recorded"}
+
+        sorted_days = sorted(daily_entries.values(), key=lambda x: x["date"], reverse=True)
+        limited = sorted_days[:limit]
+
+        for entry in limited:
+            start = entry["start_value"]
+            end = entry["end_value"]
+            entry["pnl"] = round(end - start, 2)
+            if start not in (None, 0):
+                entry["pnl_percent"] = round(((end - start) / start) * 100, 2)
+            else:
+                entry["pnl_percent"] = None
+            entry.pop("first_ts", None)
+            entry.pop("last_ts", None)
+
+        return {"days": limited}
+    except Exception as e:
+        return {"error": f"Failed to get daily P/L: {str(e)}"}
 
 
 def clear_history() -> Dict:
