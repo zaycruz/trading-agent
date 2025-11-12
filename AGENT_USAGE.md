@@ -1,8 +1,8 @@
-# Autonomous Crypto Trading Agent - Usage Guide
+# Autonomous Options Trading Agent - Usage Guide
 
 ## Overview
 
-This is a **pure tool-based autonomous crypto trading agent** powered by Qwen 3 (or any Ollama model) that makes ALL trading decisions via tool calling. The agent has:
+This is a **pure tool-based autonomous options trading agent** powered by Qwen 3 (or any Ollama model) that makes ALL trading decisions via tool calling. The agent has:
 
 - **No hardcoded trading logic** - All decisions come from the LLM
 - **Full context awareness** - Remembers past decisions and learns from them
@@ -125,11 +125,16 @@ The agent can call these tools autonomously:
 ### Trading Tools
 - `get_account_info()` - Check balance, buying power
 - `get_positions()` - View current holdings
-- `get_crypto_price(symbol)` - Get real-time crypto prices
-- `place_crypto_order(symbol, side, quantity)` - Buy/sell crypto
+- `get_option_positions()` - View existing option exposures
+- `get_option_contracts(underlying)` - Discover contracts
+- `get_options_chain(underlying)` - Inspect chain snapshot
+- `get_option_quote(symbol)` - Fetch bid/ask for a contract
+- `place_option_order(symbol, side, quantity, order_type)` - Execute single-leg trades
+- `place_multi_leg_option_order(legs, quantity, order_type)` - Execute spreads/condors
+- `close_option_position(symbol, quantity)` - Flatten open option position
 - `get_order_history(limit)` - Review past orders
 - `cancel_order(order_id)` - Cancel pending orders
-- `get_crypto_bars(symbol, timeframe)` - Get OHLCV data
+- `get_price_bars(symbol, timeframe)` - Underlying OHLCV data
 
 ### Technical Analysis Tools
 - `calculate_rsi(symbol, period)` - RSI indicator
@@ -140,7 +145,6 @@ The agent can call these tools autonomously:
 - `get_support_resistance(symbol)` - Key price levels
 
 ### Market Research Tools (Tavily)
-- `search_crypto_news(query)` - Search latest crypto news
 - `get_market_sentiment(symbol)` - Sentiment analysis
 - `search_technical_analysis(symbol)` - TA discussions
 - `search_general_web(query)` - General web search
@@ -158,19 +162,20 @@ Tool Call: get_current_datetime()
 Tool Call: get_decision_history(limit=10)
 Tool Call: get_account_info()
 Tool Call: get_positions()
-Tool Call: search_crypto_news(query="Bitcoin market news today")
-Tool Call: calculate_rsi(symbol="BTC/USD", period=14)
-Tool Call: calculate_macd(symbol="BTC/USD")
+Tool Call: get_price_bars(symbol="SPY", timeframe="1Hour")
+Tool Call: calculate_rsi(symbol="SPY", period=14)
+Tool Call: calculate_macd(symbol="SPY")
+Tool Call: get_option_quote(symbol="SPY241220C00450000")
 
 Agent: Based on my analysis:
-- RSI is at 32 (oversold)
-- MACD shows bullish crossover
-- News sentiment is positive
+- RSI is at 32 (oversold) on SPY
+- MACD shows bullish crossover on the 1h chart
+- Liquidity is strong with tight 2.44 x 2.46 markets
 - My portfolio has capacity for a new position
 
-I will buy 0.05 BTC at current market price.
+I will buy 2x SPY Dec 20 450 calls at market.
 
-Tool Call: place_crypto_order(symbol="BTC/USD", side="buy", quantity=0.05)
+Tool Call: place_option_order(symbol="SPY241220C00450000", side="buy", quantity=2, order_type="market")
 TRADE EXECUTED: {"order_id": "...", "status": "filled"}
 ```
 

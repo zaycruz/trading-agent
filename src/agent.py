@@ -31,10 +31,11 @@ from analysis_tools import (
     calculate_moving_averages,
     calculate_bollinger_bands,
     get_price_momentum,
-    get_support_resistance
+    get_support_resistance,
+    analyze_multi_timeframes,
+    analyze_multi_timeframes
 )
 from web_search import (
-    search_crypto_news,
     get_market_sentiment,
     search_technical_analysis,
     search_general_web
@@ -180,9 +181,9 @@ TOOLS = [
     calculate_bollinger_bands,
     get_price_momentum,
     get_support_resistance,
+    analyze_multi_timeframes,
     
     # Market Research
-    search_crypto_news,
     get_market_sentiment,
     search_technical_analysis,
     search_general_web,
@@ -215,13 +216,13 @@ CAPABILITIES & TOOLS:
 2. Option Discovery: get_option_contracts(), get_options_chain(), get_option_quote()
 3. Execution: place_option_order() for single-leg trades, place_multi_leg_option_order() for spreads/structures, close_option_position() to exit exposure
 4. Analysis & Research: technical indicator tools, web/news search, decision history + performance review
-5. Asset Constraint: TRADE OPTIONS ONLY. Do not place equity or crypto orders.
+5. Asset Constraint: TRADE OPTIONS ONLY. Do not place equity orders.
 
 TRADING AUTHORITY:
 Execute trades immediately when signals align
 Use multi-leg orders for spreads, condors, straddles, etc.
 Always specify option symbols precisely (e.g., SPY241220C00450000)
-Never trade spot crypto or equities
+Never trade any non-option instruments
 Never ask for permission or confirmation
 
 RISK FRAMEWORK:
@@ -230,6 +231,7 @@ RISK FRAMEWORK:
 - Track Greeks and expiration risk; avoid unmanaged short gamma near expiry
 - Roll or close positions proactively when thesis invalidates or gains can be locked
 - Sit out when signals are unclear—capital preservation still matters even with aggressive goals
+- Expiration discipline: trade ONLY option contracts whose expiration date is strictly after the current date; never trade contracts expiring today or in the past. Use get_current_datetime() to verify before sending orders.
 
 STANDARD CYCLE:
 1. Check current time/date and market session
@@ -239,6 +241,54 @@ STANDARD CYCLE:
 5. Build a trade plan: thesis, structure, strikes, size, risk, exits
 6. When plan passes risk checks → execute via place_option_order() or place_multi_leg_option_order()
 7. Document reasoning post-trade; otherwise explain why you’re holding/monitoring
+
+FEW-SHOT TOOL EXAMPLES (thought → tool → follow-up):
+- Current Time (get_current_datetime):
+  Thought: “Before evaluating expirations I need today’s date.” → Action: get_current_datetime() → Follow-up: “Now I know it’s 2024-06-18, so I’ll skip weeklies expiring today.”
+- Account Snapshot (get_account_info):
+  Thought: “Check buying power before sizing spreads.” → Action: get_account_info() → Follow-up: “Equity $125k, margin free $55k, so risking $6k fits.”
+- Position Audit (get_option_positions):
+  Thought: “Need live Greeks on open structures.” → Action: get_option_positions() → Follow-up: “SPY short put spread delta -0.20; keep monitoring.”
+- Order History (get_option_order_history):
+  Thought: “Confirm last fill price on NVDA call.” → Action: get_option_order_history(symbol="NVDA") → Follow-up: “Filled 2.35 debit; use that for P/L.”
+- Cancel Stale Order (cancel_order):
+  Thought: “Mid-price moved away, cancel resting limit.” → Action: cancel_order(order_id="ABC123") → Follow-up: “Order canceled, reassess entry.”
+- Contract Discovery (get_option_contracts):
+  Thought: “Find SPY calls expiring after earnings with 0.30 delta.” → Action: get_option_contracts(underlying="SPY", expiration_after="2024-07-01", min_delta=0.25, max_delta=0.35) → Follow-up: “SPY240719C00448000 fits, request quote.”
+- Full Chain Scan (get_options_chain):
+  Thought: “Need entire chain to compare skew.” → Action: get_options_chain(underlying="TSLA", expiration="2024-08-16") → Follow-up: “Calls rich vs puts; consider risk reversal.”
+- Single Quote (get_option_quote):
+  Thought: “Verify bid/ask on candidate contract.” → Action: get_option_quote(symbol="QQQ240816P00365000") → Follow-up: “Spread $0.08 wide, liquidity acceptable.”
+- Single-Leg Execution (place_option_order):
+  Thought: “Buy 3 delta-hedged calls immediately.” → Action: place_option_order(symbol="SPY240920C00455000", side="buy", quantity=3, order_type="market") → Follow-up: “Confirm fill then log rationale.”
+- Multi-Leg Execution (place_multi_leg_option_order):
+  Thought: “Deploy iron condor risk-defined.” → Action: place_multi_leg_option_order(legs=[{leg spec...}], quantity=2, order_type="limit", limit_price=1.05) → Follow-up: “If unfilled after 2 min, adjust credit.”
+- Exit Position (close_option_position):
+  Thought: “Theta captured 70%, close short put spread.” → Action: close_option_position(symbol="AAPL240621P00180000", quantity=2) → Follow-up: “Position flat; update decision log.”
+- RSI Check (calculate_rsi):
+  Thought: “Confirm oversold reading before selling puts.” → Action: calculate_rsi(symbol="IWM", period=14, timeframe="4h") → Follow-up: “RSI 32 trending up; green light.”
+- MACD Momentum (calculate_macd):
+  Thought: “Need momentum confirmation on breakout candidate.” → Action: calculate_macd(symbol="AMD", fast=12, slow=26, signal=9, timeframe="1h") → Follow-up: “MACD cross positive; consider call debit spread.”
+- Moving Averages (calculate_moving_averages):
+  Thought: “Trend context for SPX.” → Action: calculate_moving_averages(symbol="SPX", windows=[21, 55, 200], timeframe="1d") → Follow-up: “Price above 21/55 but below 200; medium-term caution.”
+- Volatility Bands (calculate_bollinger_bands):
+  Thought: “Check if price tagging upper band before fading rally.” → Action: calculate_bollinger_bands(symbol="NFLX", period=20, std_dev=2, timeframe="1h") → Follow-up: “Upper band hit twice; structure credit call spread.”
+- Momentum Burst (get_price_momentum):
+  Thought: “Measure 7-day momentum vs peers.” → Action: get_price_momentum(symbol="SMH", lookback_days=7) → Follow-up: “Momentum rank 85th percentile; momentum play valid.”
+- Key Levels (get_support_resistance):
+  Thought: “Need levels for stop placement.” → Action: get_support_resistance(symbol="MSFT", timeframe="4h") → Follow-up: “Support 405, resistance 422; align strikes.”
+- Multi-Timeframe Stack (analyze_multi_timeframes):
+  Thought: “Align 4h/1h trends before short gamma.” → Action: analyze_multi_timeframes(symbol="GOOGL", timeframes=["1d","4h","1h"]) → Follow-up: “All bullish; avoid new call credit spreads.”
+- Sentiment Pulse (get_market_sentiment):
+  Thought: “Gauge overall risk appetite.” → Action: get_market_sentiment() → Follow-up: “Greed index elevated; tighten upside risk.”
+- Technical Research (search_technical_analysis):
+  Thought: “Look for external takes on NVDA flag pattern.” → Action: search_technical_analysis(query="NVDA bull flag 2024") → Follow-up: “Consensus bullish; aligns with call fly idea.”
+- Broad Web Search (search_general_web):
+  Thought: “Need macro data release schedule.” → Action: search_general_web(query="economic calendar CPI release time") → Follow-up: “CPI tomorrow 8:30 ET; adjust exposure.”
+- Decision Recall (get_decision_history):
+  Thought: “Review last five trades before repeating mistakes.” → Action: get_decision_history(limit=5) → Follow-up: “Last theta plays clustered in tech; diversify.”
+- Performance Summary (get_performance_summary):
+  Thought: “Quantify hit rate before upping size.” → Action: get_performance_summary(window_days=30) → Follow-up: “Win rate 62%, avg pnl $420, maintain sizing.”
 
 EXAMPLES:
 - Directional Call Buy:
@@ -275,7 +325,7 @@ def run_agent_loop(
         verbose: Print detailed logs
     """
     logger.info("=" * 80)
-    logger.info("AUTONOMOUS CRYPTO TRADING AGENT STARTING")
+    logger.info("AUTONOMOUS OPTIONS TRADING AGENT STARTING")
     logger.info(f"Model: {model}")
     logger.info(f"Cycle Interval: {interval_seconds}s")
     logger.info("=" * 80)

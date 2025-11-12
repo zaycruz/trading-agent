@@ -41,60 +41,17 @@ def _get_tavily_client():
 # TOOL FUNCTIONS - Called by LLM via Ollama
 # ============================================================================
 
-def search_crypto_news(query: str, max_results: int = 5) -> List[Dict]:
-    """
-    Search for crypto market news and analysis using Tavily.
-    Returns recent news articles, analysis, and market commentary.
-    
-    Args:
-        query: Search query (e.g., "Bitcoin market news today", "Ethereum price analysis")
-        max_results: Number of results to return (default: 5)
-    
-    Returns list of news articles with title, content, URL, and published date.
-    """
-    try:
-        client = _get_tavily_client()
-        if client is None:
-            return [{"error": "Tavily client not available. Check API key or installation."}]
-        
-        response = client.search(
-            query=query,
-            max_results=max_results,
-            search_depth="advanced",
-            include_domains=["coindesk.com", "cointelegraph.com", "decrypt.co", "theblockcrypto.com"]
-        )
-        
-        results = []
-        for item in response.get('results', []):
-            results.append({
-                "title": item.get('title', ''),
-                "content": item.get('content', ''),
-                "url": item.get('url', ''),
-                "score": item.get('score', 0),
-                "published_date": item.get('published_date', 'unknown')
-            })
-        
-        return results
-    except Exception as e:
-        return [{"error": f"Failed to search news: {str(e)}"}]
-
-
 def get_market_sentiment(symbol: str) -> Dict:
     """
-    Get current market sentiment for a crypto asset.
+    Get current market sentiment for a tradable asset (equity, ETF, index, etc.).
     Searches for recent sentiment analysis and market opinion.
-    
-    Args:
-        symbol: Crypto symbol (e.g., "BTC", "ETH", "Bitcoin", "Ethereum")
-    
-    Returns sentiment summary with bullish/bearish indicators from recent analysis.
     """
     try:
         client = _get_tavily_client()
         if client is None:
             return {"error": "Tavily client not available. Check API key or installation."}
         
-        query = f"{symbol} crypto market sentiment analysis latest"
+        query = f"{symbol} market sentiment analysis latest"
         response = client.search(
             query=query,
             max_results=3,
@@ -121,13 +78,8 @@ def get_market_sentiment(symbol: str) -> Dict:
 
 def search_technical_analysis(symbol: str) -> List[Dict]:
     """
-    Search for technical analysis and trading signals for a crypto asset.
+    Search for technical analysis and trading signals for any asset.
     Returns recent TA discussions, chart patterns, and trading ideas.
-    
-    Args:
-        symbol: Crypto symbol (e.g., "BTC", "ETH", "Bitcoin")
-    
-    Returns list of technical analysis articles and discussions.
     """
     try:
         client = _get_tavily_client()

@@ -1,5 +1,5 @@
 """
-Pure Tool Functions for Autonomous Crypto Trading Agent
+Pure Tool Functions for the Autonomous Options Trading Agent
 All functions are designed to be called by LLM via Ollama tool calling.
 """
 
@@ -12,12 +12,12 @@ from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import (
-    MarketOrderRequest,
-    LimitOrderRequest,
-    GetOrdersRequest,
-    GetOptionContractsRequest,
     ClosePositionRequest,
-    OptionLegRequest
+    GetOptionContractsRequest,
+    GetOrdersRequest,
+    LimitOrderRequest,
+    MarketOrderRequest,
+    OptionLegRequest,
 )
 from alpaca.trading.enums import (
     OrderSide,
@@ -32,13 +32,11 @@ from alpaca.trading.enums import (
 )
 from alpaca.data.historical import (
     StockHistoricalDataClient,
-    CryptoHistoricalDataClient,
     OptionHistoricalDataClient
 )
 from alpaca.data.requests import (
     StockLatestQuoteRequest,
-    CryptoLatestQuoteRequest,
-    CryptoBarsRequest,
+    StockBarsRequest,
     OptionLatestQuoteRequest
 )
 from alpaca.data.timeframe import TimeFrame
@@ -50,7 +48,6 @@ load_dotenv(dotenv_path=env_path)
 
 # Initialize clients globally for tool functions
 _trading_client = None
-_crypto_data_client = None
 _stock_data_client = None
 _option_data_client = None
 
@@ -63,15 +60,6 @@ def _get_trading_client():
         paper = os.getenv("ALPACA_LIVE_TRADING", "false").lower() != "true"
         _trading_client = TradingClient(api_key=api_key, secret_key=secret_key, paper=paper)
     return _trading_client
-
-def _get_crypto_data_client():
-    """Lazy initialization of crypto data client"""
-    global _crypto_data_client
-    if _crypto_data_client is None:
-        api_key = os.getenv("ALPACA_API_KEY", "")
-        secret_key = os.getenv("ALPACA_SECRET_KEY", "")
-        _crypto_data_client = CryptoHistoricalDataClient(api_key=api_key, secret_key=secret_key)
-    return _crypto_data_client
 
 def _get_stock_data_client():
     """Lazy initialization of stock data client"""
@@ -111,15 +99,14 @@ def get_account_info() -> Dict:
             "equity": float(account.equity),
             "long_market_value": float(account.long_market_value),
             "status": str(account.status),
-            "trading_blocked": bool(account.trading_blocked),
-            "crypto_status": account.crypto_status if hasattr(account, 'crypto_status') else "unknown"
+            "trading_blocked": bool(account.trading_blocked)
         }
     except Exception as e:
         return {"error": f"Failed to get account info: {str(e)}"}
 
 def get_positions() -> List[Dict]:
     """
-    Get all current positions (stocks and crypto).
+    Get all current positions (equities and options).
     Returns list of positions with symbol, quantity, market value, and P&L.
     """
     try:
@@ -469,17 +456,23 @@ def place_multi_leg_option_order(
 
 def close_option_position(symbol: str, quantity: Optional[int] = None) -> Dict[str, Any]:
     """
-    Close an existing option position by submitting the opposite order.
+    Close an existing option position using Alpaca's close_position endpoint.
     """
     try:
         client = _get_trading_client()
-        position = client.get_open_position(symbol)
-        current_qty = float(position.qty)
-        close_qty = abs(quantity if quantity is not None else current_qty)
-        if close_qty == 0:
-            return {"error": f"No quantity available to close for {symbol}"}
-        side = "sell" if current_qty > 0 else "buy"
-        return place_option_order(symbol, side, int(close_qty))
+        close_request = ClosePositionRequest(
+            qty=str(quantity) if quantity is not None else None
+        )
+        result = client.close_position(
+            symbol_or_asset_id=symbol,
+            close_options=close_request
+        )
+        return {
+            "order_id": str(getattr(result, "id", "")),
+            "symbol": str(getattr(result, "symbol", symbol)),
+            "quantity": float(getattr(result, "qty", quantity or 0)),
+            "status": str(getattr(result, "status", "submitted"))
+        }
     except Exception as e:
         return {"error": f"Failed to close option position: {str(e)}"}
 
@@ -517,68 +510,6 @@ def get_option_order_history(limit: int = 20) -> List[Dict]:
         return option_orders
     except Exception as e:
         return [{"error": f"Failed to get option order history: {str(e)}"}]
-
-def get_crypto_price(symbol: str) -> Dict:
-    """
-    Get current price for a crypto symbol (e.g., BTC/USD, ETH/USD).
-    Returns bid, ask, mid price, and timestamp.
-    """
-    try:
-        client = _get_crypto_data_client()
-        request_params = CryptoLatestQuoteRequest(symbol_or_symbols=symbol)
-        quotes = client.get_crypto_latest_quote(request_params)
-        quote = quotes[symbol]
-        
-        return {
-            "symbol": symbol,
-            "bid_price": float(quote.bid_price),
-            "ask_price": float(quote.ask_price),
-            "mid_price": float((quote.bid_price + quote.ask_price) / 2),
-            "timestamp": str(quote.timestamp)
-        }
-    except Exception as e:
-        return {"error": f"Failed to get crypto price for {symbol}: {str(e)}"}
-
-def place_crypto_order(symbol: str, side: str, quantity: float, order_type: str = "market") -> Dict:
-    """
-    Place a crypto order (buy or sell).
-    
-    Args:
-        symbol: Crypto symbol (e.g., "BTC/USD", "ETH/USD")
-        side: "buy" or "sell"
-        quantity: Amount to trade (e.g., 0.1 for 0.1 BTC)
-        order_type: "market" or "limit" (default: "market")
-    
-    Returns order confirmation with order_id, status, and fill price.
-    """
-    try:
-        client = _get_trading_client()
-        
-        # Convert side to OrderSide enum
-        order_side = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
-        
-        # Create market order request
-        order_data = MarketOrderRequest(
-            symbol=symbol,
-            qty=quantity,
-            side=order_side,
-            time_in_force=TimeInForce.GTC
-        )
-        
-        order = client.submit_order(order_data)
-        
-        return {
-            "order_id": str(order.id),
-            "symbol": str(order.symbol),
-            "side": str(order.side),
-            "quantity": float(order.qty),
-            "order_type": str(order.type),
-            "status": str(order.status),
-            "submitted_at": str(order.submitted_at),
-            "filled_avg_price": float(order.filled_avg_price) if order.filled_avg_price else None
-        }
-    except Exception as e:
-        return {"error": f"Failed to place order: {str(e)}"}
 
 def get_order_history(limit: int = 10) -> List[Dict]:
     """
@@ -632,21 +563,13 @@ def cancel_order(order_id: str) -> Dict:
     except Exception as e:
         return {"error": f"Failed to cancel order: {str(e)}"}
 
-def get_crypto_bars(symbol: str, timeframe: str = "1Hour", limit: int = 100) -> Dict:
+def get_price_bars(symbol: str, timeframe: str = "1Hour", limit: int = 100) -> Dict:
     """
-    Get historical price bars for crypto (OHLCV data).
-    
-    Args:
-        symbol: Crypto symbol (e.g., "BTC/USD")
-        timeframe: "1Min", "5Min", "15Min", "1Hour", "1Day" (default: "1Hour")
-        limit: Number of bars to return (default: 100)
-    
-    Returns OHLCV data as lists for easy analysis.
+    Get historical price bars (OHLCV) for an equity or ETF.
     """
     try:
-        client = _get_crypto_data_client()
+        client = _get_stock_data_client()
         
-        # Map timeframe string to TimeFrame enum
         timeframe_map = {
             "1Min": TimeFrame.Minute,
             "5Min": TimeFrame(5, "Min"),
@@ -654,22 +577,18 @@ def get_crypto_bars(symbol: str, timeframe: str = "1Hour", limit: int = 100) -> 
             "1Hour": TimeFrame.Hour,
             "1Day": TimeFrame.Day
         }
-        
         tf = timeframe_map.get(timeframe, TimeFrame.Hour)
         
-        request_params = CryptoBarsRequest(
+        request_params = StockBarsRequest(
             symbol_or_symbols=symbol,
             timeframe=tf,
             limit=limit
         )
-        
-        bars = client.get_crypto_bars(request_params)
+        bars = client.get_stock_bars(request_params)
         df = bars.df
-        
         if df.empty:
             return {"error": "No data returned"}
         
-        # Convert to simple dict format
         return {
             "symbol": symbol,
             "timeframe": timeframe,
@@ -683,7 +602,7 @@ def get_crypto_bars(symbol: str, timeframe: str = "1Hour", limit: int = 100) -> 
             }
         }
     except Exception as e:
-        return {"error": f"Failed to get crypto bars: {str(e)}"}
+        return {"error": f"Failed to get price bars: {str(e)}"}
 
 def get_current_datetime() -> Dict:
     """

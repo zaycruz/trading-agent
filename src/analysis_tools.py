@@ -1,15 +1,15 @@
 """
-Technical Analysis Tools for Crypto Trading
+Technical Analysis Tools for Options Underlyings
 All functions designed to be called by LLM via Ollama tool calling.
 Uses pandas and numpy for calculations.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 import pandas as pd
 import numpy as np
 
 # Import from alpaca_tools to get price data
-from alpaca_tools import get_crypto_bars
+from alpaca_tools import get_price_bars
 
 
 # ============================================================================
@@ -22,7 +22,7 @@ def calculate_rsi(symbol: str, period: int = 14, timeframe: str = "1Hour") -> Di
     RSI values: >70 = overbought, <30 = oversold
     
     Args:
-        symbol: Crypto symbol (e.g., "BTC/USD")
+        symbol: Underlying symbol (e.g., "SPY")
         period: RSI period (default: 14)
         timeframe: Data timeframe (default: "1Hour")
     
@@ -30,7 +30,7 @@ def calculate_rsi(symbol: str, period: int = 14, timeframe: str = "1Hour") -> Di
     """
     try:
         # Get price data
-        bars_data = get_crypto_bars(symbol, timeframe=timeframe, limit=period * 3)
+        bars_data = get_price_bars(symbol, timeframe=timeframe, limit=period * 3)
         
         if "error" in bars_data:
             return bars_data
@@ -76,14 +76,14 @@ def calculate_macd(symbol: str, timeframe: str = "1Hour") -> Dict:
     MACD line crossing signal line indicates buy/sell signals.
     
     Args:
-        symbol: Crypto symbol (e.g., "BTC/USD")
+        symbol: Underlying symbol (e.g., "SPY")
         timeframe: Data timeframe (default: "1Hour")
     
     Returns MACD line, signal line, histogram, and crossover signal.
     """
     try:
         # Get price data
-        bars_data = get_crypto_bars(symbol, timeframe=timeframe, limit=100)
+        bars_data = get_price_bars(symbol, timeframe=timeframe, limit=100)
         
         if "error" in bars_data:
             return bars_data
@@ -134,7 +134,7 @@ def calculate_moving_averages(symbol: str, periods: List[int] = [20, 50, 200], t
     Price above MA = bullish, below = bearish. Golden cross = bullish, death cross = bearish.
     
     Args:
-        symbol: Crypto symbol (e.g., "BTC/USD")
+        symbol: Underlying symbol (e.g., "SPY")
         periods: List of MA periods (default: [20, 50, 200])
         timeframe: Data timeframe (default: "1Hour")
     
@@ -143,7 +143,7 @@ def calculate_moving_averages(symbol: str, periods: List[int] = [20, 50, 200], t
     try:
         # Get price data (use max period * 1.5 for stability)
         max_period = max(periods)
-        bars_data = get_crypto_bars(symbol, timeframe=timeframe, limit=int(max_period * 1.5))
+        bars_data = get_price_bars(symbol, timeframe=timeframe, limit=int(max_period * 1.5))
         
         if "error" in bars_data:
             return bars_data
@@ -189,7 +189,7 @@ def calculate_bollinger_bands(symbol: str, period: int = 20, std_dev: int = 2, t
     Price at upper band = overbought, at lower band = oversold.
     
     Args:
-        symbol: Crypto symbol (e.g., "BTC/USD")
+        symbol: Underlying symbol (e.g., "SPY")
         period: BB period (default: 20)
         std_dev: Standard deviations (default: 2)
         timeframe: Data timeframe (default: "1Hour")
@@ -198,7 +198,7 @@ def calculate_bollinger_bands(symbol: str, period: int = 20, std_dev: int = 2, t
     """
     try:
         # Get price data
-        bars_data = get_crypto_bars(symbol, timeframe=timeframe, limit=period * 2)
+        bars_data = get_price_bars(symbol, timeframe=timeframe, limit=period * 2)
         
         if "error" in bars_data:
             return bars_data
@@ -257,7 +257,7 @@ def get_price_momentum(symbol: str, timeframe: str = "1Hour", periods: int = 20)
     Positive momentum = bullish, negative = bearish.
     
     Args:
-        symbol: Crypto symbol (e.g., "BTC/USD")
+        symbol: Underlying symbol (e.g., "SPY")
         timeframe: Data timeframe (default: "1Hour")
         periods: Lookback period (default: 20)
     
@@ -265,7 +265,7 @@ def get_price_momentum(symbol: str, timeframe: str = "1Hour", periods: int = 20)
     """
     try:
         # Get price data
-        bars_data = get_crypto_bars(symbol, timeframe=timeframe, limit=periods + 10)
+        bars_data = get_price_bars(symbol, timeframe=timeframe, limit=periods + 10)
         
         if "error" in bars_data:
             return bars_data
@@ -310,7 +310,7 @@ def get_support_resistance(symbol: str, timeframe: str = "1Day", lookback: int =
     Identify support and resistance levels using recent highs and lows.
     
     Args:
-        symbol: Crypto symbol (e.g., "BTC/USD")
+        symbol: Underlying symbol (e.g., "SPY")
         timeframe: Data timeframe (default: "1Day")
         lookback: Number of periods to analyze (default: 50)
     
@@ -318,7 +318,7 @@ def get_support_resistance(symbol: str, timeframe: str = "1Day", lookback: int =
     """
     try:
         # Get price data
-        bars_data = get_crypto_bars(symbol, timeframe=timeframe, limit=lookback)
+        bars_data = get_price_bars(symbol, timeframe=timeframe, limit=lookback)
         
         if "error" in bars_data:
             return bars_data
@@ -350,3 +350,89 @@ def get_support_resistance(symbol: str, timeframe: str = "1Day", lookback: int =
         }
     except Exception as e:
         return {"error": f"Failed to calculate support/resistance: {str(e)}"}
+
+
+def analyze_multi_timeframes(
+    symbol: str,
+    timeframes: Optional[List[str]] = None,
+    lookback: int = 60
+) -> Dict:
+    """
+    Evaluate trend and momentum across multiple timeframes in a single call.
+
+    Returns per-timeframe stats (price change, moving averages, volatility proxy)
+    plus an aggregated sentiment summary.
+    """
+    try:
+        timeframes = timeframes or ["15Min", "1Hour", "4Hour", "1Day"]
+        if not timeframes:
+            return {"error": "No timeframes provided"}
+
+        analysis: List[Dict] = []
+        trend_counts = {"bullish": 0, "bearish": 0, "neutral": 0}
+
+        for timeframe in timeframes:
+            bars_data = get_price_bars(symbol, timeframe=timeframe, limit=lookback)
+            if "error" in bars_data:
+                analysis.append({
+                    "timeframe": timeframe,
+                    "error": bars_data["error"]
+                })
+                continue
+
+            closes = bars_data["data"].get("close", [])
+            if len(closes) < 5:
+                analysis.append({
+                    "timeframe": timeframe,
+                    "error": "Insufficient data"
+                })
+                continue
+
+            current_price = closes[-1]
+            start_price = closes[0]
+            change_pct = ((current_price - start_price) / start_price) * 100 if start_price else 0.0
+
+            short_window = min(10, len(closes))
+            long_window = min(max(20, short_window), len(closes))
+            short_ma = sum(closes[-short_window:]) / short_window
+            long_ma = sum(closes[-long_window:]) / long_window
+
+            if short_ma > long_ma * 1.001:
+                trend = "bullish"
+            elif short_ma < long_ma * 0.999:
+                trend = "bearish"
+            else:
+                trend = "neutral"
+            trend_counts[trend] += 1
+
+            recent_slice = closes[-short_window:]
+            volatility = ((max(recent_slice) - min(recent_slice)) / current_price) * 100 if current_price else 0.0
+
+            analysis.append({
+                "timeframe": timeframe,
+                "current_price": round(current_price, 2),
+                "change_percent": round(change_pct, 2),
+                "short_ma": round(short_ma, 2),
+                "long_ma": round(long_ma, 2),
+                "trend": trend,
+                "volatility_percent": round(volatility, 2)
+            })
+
+        total = sum(trend_counts.values()) or 1
+        dominant_trend = max(trend_counts, key=trend_counts.get)
+
+        summary = {
+            "trend_counts": trend_counts,
+            "dominant_trend": dominant_trend,
+            "bullish_ratio": round(trend_counts["bullish"] / total, 2),
+            "bearish_ratio": round(trend_counts["bearish"] / total, 2)
+        }
+
+        return {
+            "symbol": symbol,
+            "timeframes": timeframes,
+            "analysis": analysis,
+            "summary": summary
+        }
+    except Exception as e:
+        return {"error": f"Failed multi-timeframe analysis: {str(e)}"}

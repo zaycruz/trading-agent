@@ -2,7 +2,7 @@
 
 ## What Was Built
 
-A **pure tool-based autonomous crypto trading agent** that uses Qwen 3 (via Ollama) to make ALL trading decisions through tool calling. Zero hardcoded trading logic - the LLM is in complete control.
+A **pure tool-based autonomous options trading agent** that uses Qwen 3 (via Ollama) to make ALL trading decisions through tool calling. Zero hardcoded trading logic - the LLM is in complete control.
 
 ## Core Architecture
 
@@ -42,35 +42,32 @@ trading-agent/
     └── decision_history.py     # -  NEW - Decision tracking
 ```
 
-## Tools Available to Agent (20 Total)
+## Tools Available to Agent
 
-### Trading (7 tools)
+### Trading & Execution
 1. `get_account_info()` - Account balance, buying power
-2. `get_positions()` - Current holdings
-3. `get_crypto_price(symbol)` - Real-time prices
-4. `place_crypto_order(symbol, side, quantity)` - Execute trades
-5. `get_order_history(limit)` - Past orders
-6. `cancel_order(order_id)` - Cancel orders
-7. `get_crypto_bars(symbol, timeframe, limit)` - OHLCV data
+2. `get_positions()` / `get_option_positions()` - Current holdings
+3. `get_option_contracts()` / `get_options_chain()` - Discover contracts
+4. `get_option_quote()` - Latest bid/ask for a contract
+5. `place_option_order()` / `place_multi_leg_option_order()` - Execute single or multi-leg structures
+6. `close_option_position()` - Flatten exposure
+7. `get_option_order_history()` / `get_order_history()` - Review fills
+8. `cancel_order()` - Cancel pending orders
+9. `get_price_bars()` - Underlying OHLCV data for analysis
 
-### Technical Analysis (6 tools)
-8. `calculate_rsi(symbol, period)` - RSI indicator
-9. `calculate_macd(symbol)` - MACD signals
-10. `calculate_moving_averages(symbol, periods)` - SMA/EMA
-11. `calculate_bollinger_bands(symbol, period)` - Volatility
-12. `get_price_momentum(symbol, periods)` - Momentum
-13. `get_support_resistance(symbol, lookback)` - Key levels
+### Technical Analysis
+- `calculate_rsi()`, `calculate_macd()`, `calculate_moving_averages()`
+- `calculate_bollinger_bands()`, `get_price_momentum()`, `get_support_resistance()`
+- `analyze_multi_timeframes()` for top-down confirmation
 
-### Market Research (4 tools)
-14. `search_crypto_news(query)` - Latest crypto news
-15. `get_market_sentiment(symbol)` - Sentiment analysis
-16. `search_technical_analysis(symbol)` - TA discussions
-17. `search_general_web(query)` - General search
+### Market Research (Tavily)
+- `get_market_sentiment()` for risk appetite checks
+- `search_technical_analysis()` for external TA notes
+- `search_general_web()` for macro/news context
 
-### Context & Awareness (3 tools)
-18. `get_current_datetime()` - Temporal awareness
-19. `get_decision_history(limit)` - Review past decisions
-20. `get_performance_summary()` - Performance metrics
+### Context & Awareness
+- `get_current_datetime()` - Temporal awareness
+- `get_decision_history()` / `get_performance_summary()` - Learning + performance
 
 ## Key Features Implemented
 
@@ -80,11 +77,11 @@ trading-agent/
 # Example cycle:
 -  get_current_datetime()
 -  get_decision_history(limit=10)
--  get_positions()
--  search_crypto_news(query="Bitcoin latest")
--  calculate_rsi(symbol="BTC/USD")
--  Agent: "RSI is 28, oversold. News is positive. I'll buy 0.1 BTC"
--  place_crypto_order(symbol="BTC/USD", side="buy", quantity=0.1)
+-  get_option_positions()
+-  get_price_bars(symbol="SPY")
+-  calculate_rsi(symbol="SPY")
+-  Agent: "RSI is 28, oversold. I'll buy 2 SPY calls"
+-  place_option_order(symbol="SPY241220C00450000", side="buy", quantity=2)
 ```
 
 ### -  Recursive Loop with Context
@@ -108,7 +105,7 @@ trading-agent/
 - Price Momentum
 
 ### -  Market Research (Tavily)
-- Real-time crypto news search
+- Real-time macro/news search
 - Market sentiment analysis
 - Technical analysis discussions
 - General web search capability
@@ -138,15 +135,15 @@ trading-agent/
 3. AGENT THINKS → Calls tools as needed
    ├─ get_current_datetime()
    ├─ get_decision_history()
-   ├─ get_positions()
+   ├─ get_option_positions()
    ├─ get_account_info()
-   ├─ search_crypto_news()
+   ├─ get_price_bars()
    ├─ calculate_rsi()
    ├─ calculate_macd()
    └─ ... (any combination of 20 tools)
    ↓
 4. AGENT DECIDES
-   ├─ Buy/Sell → place_crypto_order()
+   ├─ Open/Close → place_option_order() / place_multi_leg_option_order()
    ├─ Hold → Just monitor
    └─ Research more → More tool calls
    ↓
@@ -161,21 +158,20 @@ trading-agent/
 
 **Cycle 3:**
 ```
--  "It's Monday 9:30 AM. I reviewed my history - I bought BTC at $42k 
-    2 cycles ago. Current price is $43.2k (+2.8% gain). 
+-  "It's Monday 9:30 AM. I reviewed my history - last cycle I opened a SPY
+    call spread. SPY is up another 0.4% pre-market.
 
     Let me check technical indicators:
-    - RSI: 65 (approaching overbought)
+    - RSI: 68 (approaching overbought)
     - MACD: Histogram declining (momentum slowing)
     - News: Mixed sentiment, some profit-taking mentioned
     
-    Decision: I'll take partial profits. Sell 50% of my BTC position 
-    to lock in gains. Keep 50% in case of further upside.
+    Decision: I'll take profits by closing 50% of the spread to lock gains
+    while leaving a runner in case momentum continues.
     
-    Risk management: This reduces my crypto exposure from 15% to 7.5% 
-    of portfolio, which is healthy."
+    Risk management: This trims exposure by half and frees up buying power."
 
--  place_crypto_order(symbol="BTC/USD", side="sell", quantity=0.05)
+-  close_option_position(symbol="SPY241220C00450000", quantity=1)
 ```
 
 ## Running the Agent
@@ -284,7 +280,7 @@ uv run python -c "from src.agent import run_agent_loop, TOOLS; print(f'{len(TOOL
 - -  Limited TA tools
 
 ### After (New Architecture)
-- -  Crypto trading focused
+- -  Options trading focused
 - -  Pure function-based tools
 - -  Recursive agent loop
 - -  Decision history with timestamps
@@ -299,13 +295,13 @@ uv run python -c "from src.agent import run_agent_loop, TOOLS; print(f'{len(TOOL
 ### Tool Design
 Every tool returns JSON-serializable dicts for easy LLM consumption:
 ```python
-def get_crypto_price(symbol: str) -> Dict:
+def get_option_quote(symbol: str) -> Dict:
     return {
         "symbol": symbol,
-        "bid_price": 42150.50,
-        "ask_price": 42151.00,
-        "mid_price": 42150.75,
-        "timestamp": "2025-11-10 14:30:00"
+        "bid_price": 2.45,
+        "ask_price": 2.55,
+        "mid_price": 2.50,
+        "timestamp": "2024-10-01T14:30:00"
     }
 ```
 
@@ -332,8 +328,8 @@ while True:
     "decision_id": 5,
     "timestamp": "2025-11-10T14:30:00",
     "reasoning": "RSI oversold, MACD bullish crossover...",
-    "action": "buy",
-    "parameters": {"symbol": "BTC/USD", "quantity": 0.1},
+    "action": "buy_calls",
+    "parameters": {"symbol": "SPY241220C00450000", "quantity": 2},
     "result": {"order_id": "...", "status": "filled"},
     "portfolio_value": 100500.00
 }
@@ -345,7 +341,7 @@ while True:
 -  Pure tool-based decision making (no hardcoded logic)  
 -  Recursive loop with context awareness  
 -  Temporal tracking (timestamps everywhere)  
--  Alpaca crypto trading tools  
+-  Alpaca options trading tools  
 -  Tavily web search for market research  
 -  Technical analysis tools (6 indicators)  
 -  Decision history with learning capability  

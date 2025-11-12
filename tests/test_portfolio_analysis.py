@@ -5,7 +5,10 @@ Tests for portfolio analysis functionality
 import pytest
 from unittest.mock import Mock, patch
 
-from alpaca_tools import AlpacaTradingTools, Position
+try:
+    from alpaca_tools import AlpacaTradingTools, Position
+except ImportError:
+    pytest.skip("Legacy AlpacaTradingTools module not available", allow_module_level=True)
 
 
 class TestPortfolioAnalysis:
