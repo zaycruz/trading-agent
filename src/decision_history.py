@@ -4,7 +4,7 @@ Tracks agent decisions, trades, and performance over time.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 from collections import defaultdict
@@ -107,12 +107,15 @@ def get_decision_history(limit: int = 20) -> List[Dict]:
         return [{"error": f"Failed to get history: {str(e)}"}]
 
 
-def get_performance_summary() -> Dict:
+def get_performance_summary(window_days: Optional[int] = None) -> Dict:
     """
     Get summary of agent performance over time.
     Analyzes decision history to show win rate, total trades, etc.
     
-    Returns performance metrics and statistics.
+    Args:
+        window_days: Optional number of days to look back (filters history to this window)
+    
+    Returns performance metrics and statistics including net_pnl and win_rate.
     """
     try:
         history = _load_history()
@@ -123,6 +126,31 @@ def get_performance_summary() -> Dict:
                 "message": "No decision history yet"
             }
         
+        # Filter by time window if specified
+        if window_days is not None:
+            cutoff_date = datetime.now() - timedelta(days=window_days)
+            filtered_history = []
+            for decision in history:
+                ts = decision.get('timestamp')
+                if not ts:
+                    continue
+                try:
+                    dt = datetime.fromisoformat(ts)
+                except ValueError:
+                    try:
+                        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    except ValueError:
+                        continue
+                if dt >= cutoff_date:
+                    filtered_history.append(decision)
+            history = filtered_history
+            
+            if not history:
+                return {
+                    "total_decisions": 0,
+                    "message": f"No decisions in the last {window_days} days"
+                }
+        
         # Count actions
         actions = {}
         trades = []
@@ -131,30 +159,61 @@ def get_performance_summary() -> Dict:
             action = decision.get('action', 'unknown')
             actions[action] = actions.get(action, 0) + 1
             
-            if action in ['buy', 'sell']:
+            # Consider trade-related actions
+            if action in ['buy', 'sell', 'trade', 'options_trade', 'place_option_order', 'place_multi_leg_option_order']:
                 trades.append(decision)
         
         # Get portfolio value progression
-        portfolio_values = [
-            d.get('portfolio_value') 
-            for d in history 
-            if d.get('portfolio_value') is not None
-        ]
+        portfolio_values = []
+        for d in history:
+            pv = d.get('portfolio_value')
+            if pv is not None:
+                try:
+                    portfolio_values.append(float(pv))
+                except (TypeError, ValueError):
+                    continue
         
         performance = {
             "total_decisions": len(history),
             "total_trades": len(trades),
             "actions_breakdown": actions,
-            "first_decision": history[0].get('timestamp'),
-            "last_decision": history[-1].get('timestamp'),
+            "first_decision": history[0].get('timestamp') if history else None,
+            "last_decision": history[-1].get('timestamp') if history else None,
         }
         
         if portfolio_values:
-            performance["initial_portfolio_value"] = portfolio_values[0]
-            performance["current_portfolio_value"] = portfolio_values[-1]
+            initial_value = portfolio_values[0]
+            current_value = portfolio_values[-1]
+            
+            performance["initial_portfolio_value"] = initial_value
+            performance["current_portfolio_value"] = current_value
+            performance["net_pnl"] = current_value - initial_value
             performance["portfolio_change_pct"] = (
-                ((portfolio_values[-1] - portfolio_values[0]) / portfolio_values[0]) * 100
+                ((current_value - initial_value) / initial_value) * 100
+                if initial_value != 0 else 0
             )
+            
+            # Calculate win rate based on portfolio value changes
+            # Count periods where portfolio increased
+            if len(portfolio_values) > 1:
+                increases = 0
+                decreases = 0
+                for i in range(1, len(portfolio_values)):
+                    if portfolio_values[i] > portfolio_values[i-1]:
+                        increases += 1
+                    elif portfolio_values[i] < portfolio_values[i-1]:
+                        decreases += 1
+                
+                total_changes = increases + decreases
+                if total_changes > 0:
+                    performance["win_rate"] = (increases / total_changes) * 100
+                else:
+                    performance["win_rate"] = None
+            else:
+                performance["win_rate"] = None
+        else:
+            performance["net_pnl"] = None
+            performance["win_rate"] = None
         
         return performance
     except Exception as e:

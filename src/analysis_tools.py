@@ -594,7 +594,6 @@ def analyze_option_greeks(
                 "strike_price": contract.get("strike_price"),
                 "expiration_date": contract.get("expiration_date"),
                 "open_interest": contract.get("open_interest"),
-            }
                 "greeks_source": "feed"
             }
             if "error" in quote:

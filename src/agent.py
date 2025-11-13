@@ -205,6 +205,43 @@ TRADE_FUNCTIONS = {
     'close_option_position'
 }
 
+# Map function names to actual function objects for execution
+TOOL_MAP = {
+    # Account & Trading
+    'get_account_info': get_account_info,
+    'get_option_positions': get_option_positions,
+    'get_option_contracts': get_option_contracts,
+    'get_options_chain': get_options_chain,
+    'get_option_quote': get_option_quote,
+    'place_option_order': place_option_order,
+    'place_multi_leg_option_order': place_multi_leg_option_order,
+    'close_option_position': close_option_position,
+    'get_option_order_history': get_option_order_history,
+    'cancel_order': cancel_order,
+    
+    # Technical Analysis
+    'calculate_rsi': calculate_rsi,
+    'calculate_macd': calculate_macd,
+    'calculate_moving_averages': calculate_moving_averages,
+    'calculate_bollinger_bands': calculate_bollinger_bands,
+    'get_price_momentum': get_price_momentum,
+    'get_support_resistance': get_support_resistance,
+    'analyze_multi_timeframes': analyze_multi_timeframes,
+    'analyze_option_greeks': analyze_option_greeks,
+    'screen_options_market': screen_options_market,
+    
+    # Market Research
+    'get_market_sentiment': get_market_sentiment,
+    'search_technical_analysis': search_technical_analysis,
+    'search_general_web': search_general_web,
+    
+    # Context & History
+    'get_current_datetime': get_current_datetime,
+    'get_decision_history': get_decision_history,
+    'get_performance_summary': get_performance_summary,
+    'get_daily_pnl': get_daily_pnl
+}
+
 
 def _format_open_positions_summary() -> str:
     """
@@ -235,6 +272,43 @@ def _format_open_positions_summary() -> str:
     return "Open option positions snapshot:\n" + "\n".join(lines)
 
 
+def _format_current_pnl() -> str:
+    """
+    Get current live PnL from account and positions.
+    """
+    try:
+        account_info = get_account_info()
+        if 'error' in account_info:
+            return "Current PnL: unavailable (account info error)"
+        
+        portfolio_value = account_info.get('portfolio_value')
+        equity = account_info.get('equity')
+        cash = account_info.get('cash')
+        
+        # Get unrealized P&L from positions
+        positions = get_option_positions()
+        total_unrealized_pl = 0.0
+        if positions and not (len(positions) == 1 and 'error' in positions[0]):
+            for pos in positions:
+                upnl = pos.get('unrealized_pl')
+                if upnl is not None:
+                    total_unrealized_pl += upnl
+        
+        lines = []
+        if portfolio_value is not None:
+            lines.append(f"Portfolio Value: ${portfolio_value:,.2f}")
+        if equity is not None:
+            lines.append(f"Equity: ${equity:,.2f}")
+        if cash is not None:
+            lines.append(f"Cash: ${cash:,.2f}")
+        if total_unrealized_pl != 0:
+            lines.append(f"Unrealized P&L: ${total_unrealized_pl:,.2f}")
+        
+        return "Current Account Status:\n" + "\n".join(lines) if lines else "Current PnL: unavailable"
+    except Exception as e:
+        return f"Current PnL: unavailable ({str(e)})"
+
+
 def _format_performance_summary() -> str:
     """
     Retrieve daily/weekly/monthly performance snapshots for immediate context.
@@ -256,29 +330,41 @@ def _format_performance_summary() -> str:
             lines.append(f"{label}: unavailable ({summary.get('error') if isinstance(summary, dict) else 'unknown error'})")
             continue
 
-        pnl = summary.get("net_pnl", 0)
+        pnl = summary.get("net_pnl")
         pnl_pct = summary.get("portfolio_change_pct")
         hit_rate = summary.get("win_rate")
 
-        parts = [
-            f"PnL ${round(pnl, 2)}",
-            f"{round(pnl_pct, 2)}%" if pnl_pct is not None else "Pct n/a",
-            f"HR {round(hit_rate, 1)}%" if hit_rate is not None else "HR n/a"
-        ]
+        parts = []
+        if pnl is not None:
+            parts.append(f"PnL ${round(pnl, 2)}")
+        else:
+            parts.append("PnL n/a")
+        
+        if pnl_pct is not None:
+            parts.append(f"{round(pnl_pct, 2)}%")
+        else:
+            parts.append("Pct n/a")
+        
+        if hit_rate is not None:
+            parts.append(f"HR {round(hit_rate, 1)}%")
+        else:
+            parts.append("HR n/a")
+        
         lines.append(f"{label}: " + ", ".join(parts))
 
     return "Performance snapshot (rolling):\n" + "\n".join(lines)
 
-SYSTEM_PROMPT = """You are an AUTONOMOUS OPTIONS TRADING agent with FULL AUTHORITY to manage this portfolio.
+SYSTEM_PROMPT = """You are the PORTFOLIO MANAGER for this options trading account. You have FULL AUTHORITY and DIRECT CONTROL over all trading decisions. You are NOT an advisor—you ARE the decision maker executing trades.
 
-CRITICAL: You have complete permission to trade SINGLE-LEG and MULTI-LEG US EQUITY OPTIONS. Execute trades directly with place_option_order() or place_multi_leg_option_order() whenever your analysis requires it. Never ask for approval.
+CRITICAL: You have complete permission to trade SINGLE-LEG and MULTI-LEG US EQUITY OPTIONS. Execute trades directly with place_option_order() or place_multi_leg_option_order() whenever your analysis requires it. Never ask for approval or make recommendations—YOU DECIDE AND EXECUTE.
 
-YOUR ROLE:
-- Run a professional options book focused on disciplined premium capture and directional plays
-- Performance is actively monitored; you are accountable for maximizing cumulative gains
-- Size trades at your discretion based on conviction and risk/reward
-- Manage existing positions: roll, scale, or close using close_option_position() when risk/return shifts
-- Provide concise reasoning after each action, especially when deploying significant capital
+YOUR ROLE AS PORTFOLIO MANAGER:
+- You run this options book and make all trading decisions autonomously
+- You are accountable for performance and maximizing cumulative gains
+- You size trades at your discretion based on conviction and risk/reward
+- You manage existing positions: roll, scale, or close using close_option_position() when risk/return shifts
+- You execute trades immediately when your analysis indicates an opportunity—no hesitation, no asking
+- After executing, provide concise reasoning for the decision
 
 CAPABILITIES & TOOLS:
 1. Account & Risk: get_account_info(), get_option_positions(), get_option_order_history(), cancel_order()
@@ -288,11 +374,12 @@ CAPABILITIES & TOOLS:
 5. Asset Constraint: TRADE OPTIONS ONLY. Do not place equity orders.
 
 TRADING AUTHORITY:
-Execute trades immediately when signals align
+YOU ARE THE PORTFOLIO MANAGER—EXECUTE TRADES DIRECTLY. Do not suggest, recommend, or ask—just execute.
+When your analysis indicates a trade opportunity, execute it immediately via place_option_order() or place_multi_leg_option_order()
 Use multi-leg orders for spreads, condors, straddles, etc.
 Always specify option symbols precisely (e.g., SPY241220C00450000)
 Never trade any non-option instruments
-Never ask for permission or confirmation
+Never ask for permission, confirmation, or make recommendations—YOU ARE THE DECISION MAKER
 
 RISK FRAMEWORK:
 - You control how much capital to risk per idea; ensure buying power and margin remain sufficient
@@ -304,12 +391,14 @@ RISK FRAMEWORK:
 
 STANDARD CYCLE:
 1. Check current time/date and market session
-2. Review past decisions & performance
+2. Review past decisions & performance (you see current PnL at the start of each cycle)
 3. Inspect account health and open option positions
 4. Evaluate market context (news, sentiment, technicals on underlyings)
 5. Build a trade plan: thesis, structure, strikes, size, risk, exits
-6. When plan passes risk checks → execute via place_option_order() or place_multi_leg_option_order()
-7. Document reasoning post-trade; otherwise explain why you’re holding/monitoring
+6. When plan passes risk checks → EXECUTE IMMEDIATELY via place_option_order() or place_multi_leg_option_order()
+7. Document reasoning post-trade; otherwise explain why you're holding/monitoring
+
+REMEMBER: You see your current portfolio value, equity, cash, and unrealized P&L at the start of each cycle. Use this to inform your decisions.
 
 FEW-SHOT TOOL EXAMPLES (thought → tool → follow-up):
 - Current Time (get_current_datetime):
@@ -367,17 +456,17 @@ FEW-SHOT TOOL EXAMPLES (thought → tool → follow-up):
 
 EXAMPLES:
 - Directional Call Buy:
-  “SPY holding support, RSI 35, momentum turning up, volatility cheap. Buying 2x SPY241220C00450000 at market.”
+  "SPY holding support, RSI 35, momentum turning up, volatility cheap. Executing: Buying 2x SPY241220C00450000 at market."
   → place_option_order(symbol="SPY241220C00450000", side="buy", quantity=2)
 
 - Credit Spread:
-  “Expect NVDA to stay below 520; IV rich, skew favorable. Opening 3-lot call credit spread.”
+  "Expect NVDA to stay below 520; IV rich, skew favorable. Executing: Opening 3-lot call credit spread."
   → place_multi_leg_option_order(legs=[{...call spread legs...}], quantity=3, order_type="limit", limit_price=1.35)
 
 - Hold/Monitor:
-  “Existing short put spread still inside risk guardrails; theta working. No adjustments this cycle.”
+  "Existing short put spread still inside risk guardrails; theta working. No adjustments this cycle—monitoring."
 
-Operate like a seasoned options PM: data-driven, risk-aware, decisive."""
+YOU ARE THE PORTFOLIO MANAGER. Make decisions and execute trades. Do not suggest or recommend—ACT."""
 
 
 # ============================================================================
@@ -426,17 +515,27 @@ def run_agent_loop(
 
             positions_summary = _format_open_positions_summary()
             performance_summary = _format_performance_summary()
+            current_pnl = _format_current_pnl()
             
             # Prompt agent for new cycle
             cycle_prompt = {
                 'role': 'user',
                 'content': (
                     f"New trading cycle #{iteration}. "
-                    "Start by checking the time, reviewing your decision history, "
-                    "and auditing all open option positions. "
-                    "Use the available option tools to find, size, and manage trades.\n\n"
+                    "You are the PORTFOLIO MANAGER - you MUST make trading decisions and execute trades.\n\n"
+                    "REQUIRED ACTIONS THIS CYCLE:\n"
+                    "1. Check current time/date (get_current_datetime)\n"
+                    "2. Review decision history (get_decision_history)\n"
+                    "3. Audit open positions (get_option_positions)\n"
+                    "4. Analyze market opportunities using technical analysis tools\n"
+                    "5. EXECUTE TRADES when opportunities are identified - DO NOT just monitor!\n\n"
+                    "CRITICAL: If you identify a trading opportunity, you MUST execute it immediately using "
+                    "place_option_order() or place_multi_leg_option_order(). Do not just describe what you would do - "
+                    "ACTUALLY DO IT. You have full authority to trade.\n\n"
+                    f"{current_pnl}\n\n"
                     f"{positions_summary}\n\n"
-                    f"{performance_summary}"
+                    f"{performance_summary}\n\n"
+                    "Remember: You are the decision maker. Execute trades when analysis supports them."
                 )
             }
             conversation_history.append(cycle_prompt)
@@ -444,11 +543,15 @@ def run_agent_loop(
             # Agent thinking loop (may require multiple tool calls)
             thinking = True
             tool_call_count = 0
+            max_tool_iterations = 10  # Prevent infinite loops
+            trade_executed_this_cycle = False
             
-            while thinking:
+            while thinking and tool_call_count < max_tool_iterations:
                 # Call LLM with tools
                 if verbose:
                     logger.info("Consulting agent...")
+                    if tool_call_count == 0:
+                        logger.debug(f"Available tools: {[tool.__name__ for tool in TOOLS]}")
                 
                 response = chat(
                     model=model,
@@ -478,6 +581,11 @@ def run_agent_loop(
                     if verbose:
                         logger.info(f"Tool calls detected: {len(tool_calls)}")
                     
+                    # Track if any trade functions are being called
+                    for tool_call in tool_calls:
+                        if tool_call.get('name') in TRADE_FUNCTIONS:
+                            trade_executed_this_cycle = True
+                    
                     for tool_call in tool_calls:
                         function_name = tool_call['name']
                         function_args = tool_call.get('arguments', {})
@@ -491,7 +599,12 @@ def run_agent_loop(
                         
                         # Execute the tool
                         try:
-                            result = globals()[function_name](**function_args)
+                            # Look up function in TOOL_MAP
+                            if function_name not in TOOL_MAP:
+                                raise KeyError(f"Unknown tool function: {function_name}. Available tools: {list(TOOL_MAP.keys())}")
+                            
+                            tool_function = TOOL_MAP[function_name]
+                            result = tool_function(**function_args)
                             
                             if verbose:
                                 logger.info(f"Tool result: {json.dumps(result, indent=2)[:500]}...")
@@ -499,16 +612,34 @@ def run_agent_loop(
                             # Special handling for trading actions
                             if function_name in TRADE_FUNCTIONS and 'error' not in result:
                                 logger.info(f"Trade executed: {result}")
+                                
+                                # Extract agent's reasoning from the conversation
+                                reasoning = agent_content if agent_content else "Options trade executed via agent"
+                                
+                                # Get current portfolio value for performance tracking
+                                portfolio_value = None
+                                try:
+                                    account_info = get_account_info()
+                                    if 'error' not in account_info:
+                                        portfolio_value = account_info.get('portfolio_value')
+                                except Exception as e:
+                                    logger.warning(f"Could not fetch portfolio value: {e}")
+                                
                                 save_decision(
-                                    reasoning="Options trade executed via agent",
+                                    reasoning=reasoning,
                                     action="options_trade",
                                     parameters=function_args,
-                                    result=result
+                                    result=result,
+                                    portfolio_value=portfolio_value
                                 )
                             
+                        except KeyError as e:
+                            result = {"error": f"Tool not found: {str(e)}"}
+                            logger.error(f"Tool lookup error: {e}")
+                            logger.error(f"Available tools: {list(TOOL_MAP.keys())}")
                         except Exception as e:
                             result = {"error": f"Tool execution failed: {str(e)}"}
-                            logger.error(f"Tool error: {e}")
+                            logger.error(f"Tool execution error for {function_name}: {e}", exc_info=True)
                         
                         # Add tool result to conversation
                         tool_response = {
@@ -530,7 +661,15 @@ def run_agent_loop(
                     if agent_message:
                         logger.info(f"Agent summary: {agent_message}")
                     
+                    # Warn if no trades were executed this cycle
+                    if tool_call_count > 0 and not trade_executed_this_cycle:
+                        logger.warning(f"Cycle #{iteration} completed with {tool_call_count} tool calls but NO TRADE EXECUTIONS. "
+                                     f"Agent may be hesitating - check reasoning above.")
+                    
                     thinking = False
+            
+            if tool_call_count >= max_tool_iterations:
+                logger.warning(f"Reached max tool iterations ({max_tool_iterations}) for cycle #{iteration}. Stopping tool loop.")
             
             logger.info(f"Cycle complete. Made {tool_call_count} tool calls.")
             if interval_seconds > 0:

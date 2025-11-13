@@ -153,18 +153,24 @@ def get_option_positions() -> List[Dict]:
             asset_class = str(getattr(pos, 'asset_class', '')).lower()
             if 'option' not in asset_class:
                 continue
-            qty = float(pos.qty) if hasattr(pos, 'qty') else 0.0
+            qty = _safe_float(getattr(pos, 'qty', None))
+            market_value = _safe_float(getattr(pos, 'market_value', None))
+            cost_basis = _safe_float(getattr(pos, 'cost_basis', None))
+            current_price = _safe_float(getattr(pos, 'current_price', None))
+            unrealized_pl = _safe_float(getattr(pos, 'unrealized_pl', None))
+            unrealized_plpc = _safe_float(getattr(pos, 'unrealized_plpc', None))
+            strike_price = _safe_float(getattr(pos, 'strike_price', None))
             option_positions.append({
                 "symbol": str(pos.symbol),
-                "quantity": qty,
+                "quantity": qty if qty is not None else 0.0,
                 "side": str(pos.side),
-                "market_value": float(pos.market_value) if hasattr(pos, 'market_value') else 0.0,
-                "cost_basis": float(pos.cost_basis) if hasattr(pos, 'cost_basis') else 0.0,
-                "current_price": float(pos.current_price) if hasattr(pos, 'current_price') else None,
-                "unrealized_pl": float(pos.unrealized_pl) if hasattr(pos, 'unrealized_pl') else None,
-                "unrealized_pl_percent": float(pos.unrealized_plpc) * 100 if hasattr(pos, 'unrealized_plpc') else None,
-                "expiration_date": str(getattr(pos, 'expiry_date', '')),
-                "strike_price": float(getattr(pos, 'strike_price', 0.0)) if hasattr(pos, 'strike_price') else None
+                "market_value": market_value if market_value is not None else 0.0,
+                "cost_basis": cost_basis if cost_basis is not None else 0.0,
+                "current_price": current_price,
+                "unrealized_pl": unrealized_pl,
+                "unrealized_pl_percent": unrealized_plpc * 100 if unrealized_plpc is not None else None,
+                "expiration_date": str(getattr(pos, 'expiry_date', '')) if getattr(pos, 'expiry_date', None) else "",
+                "strike_price": strike_price
             })
         return option_positions
     except Exception as e:
