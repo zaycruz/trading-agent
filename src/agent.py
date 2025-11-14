@@ -12,7 +12,8 @@ from typing import Any, Dict, List, Optional
 from ollama import chat
 
 # Import all tool functions
-from alpaca_tools import (
+from tools.history import save_decision
+from tools import (
     get_account_info,
     get_option_positions,
     get_option_contracts,
@@ -23,9 +24,7 @@ from alpaca_tools import (
     close_option_position,
     get_option_order_history,
     cancel_order,
-    get_current_datetime
-)
-from analysis_tools import (
+    get_current_datetime,
     calculate_rsi,
     calculate_macd,
     calculate_moving_averages,
@@ -34,18 +33,14 @@ from analysis_tools import (
     get_support_resistance,
     analyze_multi_timeframes,
     analyze_option_greeks,
-    screen_options_market
-)
-from web_search import (
+    screen_options_market,
     get_market_sentiment,
     search_technical_analysis,
-    search_general_web
-)
-from decision_history import (
-    save_decision,
+    search_general_web,
     get_decision_history,
     get_performance_summary,
-    get_daily_pnl
+    get_daily_pnl,
+    log_trading_decision
 )
 
 # Setup logging
@@ -158,6 +153,210 @@ def _get_field(source: Any, key: str) -> Any:
     return getattr(source, key, None)
 
 
+def _normalize_side_value(side: Any) -> str:
+    """
+    Normalize side values from various formats to 'buy' or 'sell'.
+    """
+    if side is None:
+        return "buy"
+    side_str = str(side).lower().strip()
+    # Map common variations
+    buy_variants = ["buy", "long", "b", "l", "purchase"]
+    sell_variants = ["sell", "short", "s", "short_sell"]
+    if side_str in buy_variants:
+        return "buy"
+    elif side_str in sell_variants:
+        return "sell"
+    else:
+        # Default to buy if unclear
+        logger.warning(f"Unrecognized side value '{side}', defaulting to 'buy'")
+        return "buy"
+
+
+def _normalize_tool_parameters(function_name: str, raw_args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize and validate tool parameters before execution.
+    Maps common parameter name variations to actual function signatures.
+    """
+    if not isinstance(raw_args, dict):
+        return {}
+    
+    normalized = {}
+    
+    # Parameter name mappings for each function
+    param_mappings = {
+        'place_option_order': {
+            # Map variations to actual parameter names
+            'orderType': 'order_type',
+            'order_type': 'order_type',
+            'qty': 'quantity',
+            'quantity': 'quantity',
+            'side': 'side',
+            'symbol': 'symbol',
+            'timeInForce': 'time_in_force',
+            'time_in_force': 'time_in_force',
+            'tif': 'time_in_force',
+            'limitPrice': 'limit_price',
+            'limit_price': 'limit_price',
+            'price': 'limit_price',
+            # Invalid parameters to ignore
+            'transactTime': None,
+            'transact_time': None,
+        },
+        'place_multi_leg_option_order': {
+            'orderType': 'order_type',
+            'order_type': 'order_type',
+            'qty': 'quantity',
+            'quantity': 'quantity',
+            'legs': 'legs',
+            'timeInForce': 'time_in_force',
+            'time_in_force': 'time_in_force',
+            'tif': 'time_in_force',
+            'limitPrice': 'limit_price',
+            'limit_price': 'limit_price',
+            'price': 'limit_price',
+        },
+        'close_option_position': {
+            'qty': 'quantity',
+            'quantity': 'quantity',
+            'symbol': 'symbol',
+        },
+        'get_option_contracts': {
+            'underlying': 'underlying_symbol',
+            'underlying_symbol': 'underlying_symbol',
+            'symbol': 'underlying_symbol',
+            'type': 'contract_type',
+            'contract_type': 'contract_type',
+            'expiration_after': 'expiration_date_gte',
+            'expiration_date_gte': 'expiration_date_gte',
+            'expiration_before': 'expiration_date_lte',
+            'expiration_date_lte': 'expiration_date_lte',
+            'strike_gte': 'strike_price_gte',
+            'strike_price_gte': 'strike_price_gte',
+            'strike_lte': 'strike_price_lte',
+            'strike_price_lte': 'strike_price_lte',
+        },
+        'get_options_chain': {
+            'underlying': 'underlying_symbol',
+            'underlying_symbol': 'underlying_symbol',
+            'symbol': 'underlying_symbol',
+            'expiration': 'expiration_date',
+            'expiration_date': 'expiration_date',
+            'type': 'contract_type',
+            'contract_type': 'contract_type',
+        },
+    }
+    
+    # Get mapping for this function, or use identity mapping
+    mapping = param_mappings.get(function_name, {})
+    
+    # Apply mappings
+    for key, value in raw_args.items():
+        if key in mapping:
+            mapped_key = mapping[key]
+            if mapped_key is None:
+                # Skip invalid parameters
+                continue
+            normalized[mapped_key] = value
+        else:
+            # Keep unmapped parameters as-is (might be valid)
+            normalized[key] = value
+    
+    # Normalize side values for trading functions
+    if function_name in ['place_option_order', 'close_option_position']:
+        if 'side' in normalized:
+            normalized['side'] = _normalize_side_value(normalized['side'])
+    
+    # Normalize side values in legs for multi-leg orders
+    if function_name == 'place_multi_leg_option_order' and 'legs' in normalized:
+        legs = normalized['legs']
+        if isinstance(legs, list):
+            for leg in legs:
+                if isinstance(leg, dict) and 'side' in leg:
+                    leg['side'] = _normalize_side_value(leg['side'])
+    
+    # Validate required parameters
+    required_params = {
+        'place_option_order': ['symbol', 'side', 'quantity'],
+        'place_multi_leg_option_order': ['legs', 'quantity'],
+        'close_option_position': ['symbol'],
+    }
+    
+    if function_name in required_params:
+        missing = []
+        for param in required_params[function_name]:
+            if param not in normalized or normalized[param] is None:
+                missing.append(param)
+        if missing:
+            raise ValueError(
+                f"{function_name}() missing required arguments: {', '.join(missing)}. "
+                f"Received: {list(raw_args.keys())}"
+            )
+    
+    # Type conversions and validations
+    if function_name == 'place_option_order':
+        # Convert quantity to int if it's a string
+        if 'quantity' in normalized:
+            try:
+                qty_val = normalized['quantity']
+                if isinstance(qty_val, str):
+                    # Try to parse as float first, then int
+                    normalized['quantity'] = int(float(qty_val))
+                elif isinstance(qty_val, (int, float)):
+                    normalized['quantity'] = int(qty_val)
+            except (ValueError, TypeError):
+                raise ValueError(f"Invalid quantity value: {normalized['quantity']}")
+        
+        # Normalize order_type
+        if 'order_type' in normalized:
+            order_type = str(normalized['order_type']).lower()
+            if order_type in ['market', 'marketorder']:
+                normalized['order_type'] = 'market'
+            elif order_type in ['limit', 'limitorder']:
+                normalized['order_type'] = 'limit'
+            else:
+                logger.warning(f"Unknown order_type '{normalized['order_type']}', defaulting to 'market'")
+                normalized['order_type'] = 'market'
+    
+    if function_name == 'place_multi_leg_option_order':
+        # Validate legs
+        if 'legs' in normalized:
+            legs = normalized['legs']
+            if not isinstance(legs, list) or len(legs) == 0:
+                raise ValueError(f"place_multi_leg_option_order() requires 'legs' to be a non-empty list")
+            for leg in legs:
+                if not isinstance(leg, dict):
+                    raise ValueError(f"Each leg must be a dictionary, got {type(leg)}")
+                if 'symbol' not in leg:
+                    raise ValueError(f"Each leg must have a 'symbol' field")
+                if 'side' not in leg:
+                    raise ValueError(f"Each leg must have a 'side' field")
+        
+        # Convert quantity to int
+        if 'quantity' in normalized:
+            try:
+                qty_val = normalized['quantity']
+                if isinstance(qty_val, str):
+                    normalized['quantity'] = int(float(qty_val))
+                elif isinstance(qty_val, (int, float)):
+                    normalized['quantity'] = int(qty_val)
+            except (ValueError, TypeError):
+                raise ValueError(f"Invalid quantity value: {normalized['quantity']}")
+        
+        # Normalize order_type
+        if 'order_type' in normalized:
+            order_type = str(normalized['order_type']).lower()
+            if order_type in ['market', 'marketorder']:
+                normalized['order_type'] = 'market'
+            elif order_type in ['limit', 'limitorder']:
+                normalized['order_type'] = 'limit'
+            else:
+                logger.warning(f"Unknown order_type '{normalized['order_type']}', defaulting to 'market'")
+                normalized['order_type'] = 'market'
+    
+    return normalized
+
+
 # ============================================================================
 # AGENT CONFIGURATION
 # ============================================================================
@@ -196,13 +395,52 @@ TOOLS = [
     get_current_datetime,
     get_decision_history,
     get_performance_summary,
-    get_daily_pnl
+    get_daily_pnl,
+    log_trading_decision
 ]
 
 TRADE_FUNCTIONS = {
     'place_option_order',
     'place_multi_leg_option_order',
     'close_option_position'
+}
+
+# Map function names to actual function objects for execution
+TOOL_MAP = {
+    # Account & Trading
+    'get_account_info': get_account_info,
+    'get_option_positions': get_option_positions,
+    'get_option_contracts': get_option_contracts,
+    'get_options_chain': get_options_chain,
+    'get_option_quote': get_option_quote,
+    'place_option_order': place_option_order,
+    'place_multi_leg_option_order': place_multi_leg_option_order,
+    'close_option_position': close_option_position,
+    'get_option_order_history': get_option_order_history,
+    'cancel_order': cancel_order,
+    
+    # Technical Analysis
+    'calculate_rsi': calculate_rsi,
+    'calculate_macd': calculate_macd,
+    'calculate_moving_averages': calculate_moving_averages,
+    'calculate_bollinger_bands': calculate_bollinger_bands,
+    'get_price_momentum': get_price_momentum,
+    'get_support_resistance': get_support_resistance,
+    'analyze_multi_timeframes': analyze_multi_timeframes,
+    'analyze_option_greeks': analyze_option_greeks,
+    'screen_options_market': screen_options_market,
+    
+    # Market Research
+    'get_market_sentiment': get_market_sentiment,
+    'search_technical_analysis': search_technical_analysis,
+    'search_general_web': search_general_web,
+    
+    # Context & History
+    'get_current_datetime': get_current_datetime,
+    'get_decision_history': get_decision_history,
+    'get_performance_summary': get_performance_summary,
+    'get_daily_pnl': get_daily_pnl,
+    'log_trading_decision': log_trading_decision
 }
 
 
@@ -235,6 +473,43 @@ def _format_open_positions_summary() -> str:
     return "Open option positions snapshot:\n" + "\n".join(lines)
 
 
+def _format_current_pnl() -> str:
+    """
+    Get current live PnL from account and positions.
+    """
+    try:
+        account_info = get_account_info()
+        if 'error' in account_info:
+            return "Current PnL: unavailable (account info error)"
+        
+        portfolio_value = account_info.get('portfolio_value')
+        equity = account_info.get('equity')
+        cash = account_info.get('cash')
+        
+        # Get unrealized P&L from positions
+        positions = get_option_positions()
+        total_unrealized_pl = 0.0
+        if positions and not (len(positions) == 1 and 'error' in positions[0]):
+            for pos in positions:
+                upnl = pos.get('unrealized_pl')
+                if upnl is not None:
+                    total_unrealized_pl += upnl
+        
+        lines = []
+        if portfolio_value is not None:
+            lines.append(f"Portfolio Value: ${portfolio_value:,.2f}")
+        if equity is not None:
+            lines.append(f"Equity: ${equity:,.2f}")
+        if cash is not None:
+            lines.append(f"Cash: ${cash:,.2f}")
+        if total_unrealized_pl != 0:
+            lines.append(f"Unrealized P&L: ${total_unrealized_pl:,.2f}")
+        
+        return "Current Account Status:\n" + "\n".join(lines) if lines else "Current PnL: unavailable"
+    except Exception as e:
+        return f"Current PnL: unavailable ({str(e)})"
+
+
 def _format_performance_summary() -> str:
     """
     Retrieve daily/weekly/monthly performance snapshots for immediate context.
@@ -256,43 +531,57 @@ def _format_performance_summary() -> str:
             lines.append(f"{label}: unavailable ({summary.get('error') if isinstance(summary, dict) else 'unknown error'})")
             continue
 
-        pnl = summary.get("net_pnl", 0)
+        pnl = summary.get("net_pnl")
         pnl_pct = summary.get("portfolio_change_pct")
         hit_rate = summary.get("win_rate")
 
-        parts = [
-            f"PnL ${round(pnl, 2)}",
-            f"{round(pnl_pct, 2)}%" if pnl_pct is not None else "Pct n/a",
-            f"HR {round(hit_rate, 1)}%" if hit_rate is not None else "HR n/a"
-        ]
+        parts = []
+        if pnl is not None:
+            parts.append(f"PnL ${round(pnl, 2)}")
+        else:
+            parts.append("PnL n/a")
+        
+        if pnl_pct is not None:
+            parts.append(f"{round(pnl_pct, 2)}%")
+        else:
+            parts.append("Pct n/a")
+        
+        if hit_rate is not None:
+            parts.append(f"HR {round(hit_rate, 1)}%")
+        else:
+            parts.append("HR n/a")
+        
         lines.append(f"{label}: " + ", ".join(parts))
 
     return "Performance snapshot (rolling):\n" + "\n".join(lines)
 
-SYSTEM_PROMPT = """You are an AUTONOMOUS OPTIONS TRADING agent with FULL AUTHORITY to manage this portfolio.
+SYSTEM_PROMPT = """You are the PORTFOLIO MANAGER for this options trading account. You have FULL AUTHORITY and DIRECT CONTROL over all trading decisions. There is no user interaction—this is a purely autonomous system, so you should not pause or await further prompts.
 
-CRITICAL: You have complete permission to trade SINGLE-LEG and MULTI-LEG US EQUITY OPTIONS. Execute trades directly with place_option_order() or place_multi_leg_option_order() whenever your analysis requires it. Never ask for approval.
+CRITICAL: You have complete permission to trade SINGLE-LEG and MULTI-LEG US EQUITY OPTIONS. Execute trades directly with place_option_order() or place_multi_leg_option_order() whenever your analysis requires it. Never ask for approval or make recommendations—YOU DECIDE AND EXECUTE.
 
-YOUR ROLE:
-- Run a professional options book focused on disciplined premium capture and directional plays
-- Performance is actively monitored; you are accountable for maximizing cumulative gains
-- Size trades at your discretion based on conviction and risk/reward
-- Manage existing positions: roll, scale, or close using close_option_position() when risk/return shifts
-- Provide concise reasoning after each action, especially when deploying significant capital
+YOUR ROLE AS PORTFOLIO MANAGER:
+- You run this options book and make all trading decisions autonomously
+- You are accountable for performance and maximizing cumulative gains
+- You size trades at your discretion based on conviction and risk/reward
+- You manage existing positions: roll, scale, or close using close_option_position() when risk/return shifts
+- You execute trades immediately when your analysis indicates an opportunity—no hesitation, no asking
+- After executing, provide concise reasoning for the decision
 
 CAPABILITIES & TOOLS:
 1. Account & Risk: get_account_info(), get_option_positions(), get_option_order_history(), cancel_order()
 2. Option Discovery: get_option_contracts(), get_options_chain(), get_option_quote()
 3. Execution: place_option_order() for single-leg trades, place_multi_leg_option_order() for spreads/structures, close_option_position() to exit exposure
 4. Analysis & Research: technical indicator tools, web/news search, decision history + performance review
-5. Asset Constraint: TRADE OPTIONS ONLY. Do not place equity orders.
+5. Decision Logging: log_trading_decision() - Call this at the end of each cycle to record your decision (BUY/SELL/HOLD) with your reasoning
+6. Asset Constraint: TRADE OPTIONS ONLY. Do not place equity orders.
 
 TRADING AUTHORITY:
-Execute trades immediately when signals align
+YOU ARE THE PORTFOLIO MANAGER—EXECUTE TRADES DIRECTLY. Do not suggest, recommend, or ask—just execute.
+When your analysis indicates a trade opportunity, execute it immediately via place_option_order() or place_multi_leg_option_order()
 Use multi-leg orders for spreads, condors, straddles, etc.
 Always specify option symbols precisely (e.g., SPY241220C00450000)
 Never trade any non-option instruments
-Never ask for permission or confirmation
+Never ask for permission, confirmation, or make recommendations—YOU ARE THE DECISION MAKER
 
 RISK FRAMEWORK:
 - You control how much capital to risk per idea; ensure buying power and margin remain sufficient
@@ -300,84 +589,28 @@ RISK FRAMEWORK:
 - Track Greeks and expiration risk; avoid unmanaged short gamma near expiry
 - Roll or close positions proactively when thesis invalidates or gains can be locked
 - Sit out when signals are unclear—capital preservation still matters even with aggressive goals
-- Expiration discipline: trade ONLY option contracts whose expiration date is strictly after the current date; never trade contracts expiring today or in the past. Use get_current_datetime() to verify before sending orders.
+- Expiration discipline: trade ONLY option contracts whose expiration date is on or after the current date; same-day (0DTE) options are allowed but never trade any contract that already expired. Use get_current_datetime() to verify before sending orders.
 
 STANDARD CYCLE:
 1. Check current time/date and market session
-2. Review past decisions & performance
+2. Review past decisions & performance (you see current PnL at the start of each cycle)
 3. Inspect account health and open option positions
 4. Evaluate market context (news, sentiment, technicals on underlyings)
 5. Build a trade plan: thesis, structure, strikes, size, risk, exits
-6. When plan passes risk checks → execute via place_option_order() or place_multi_leg_option_order()
-7. Document reasoning post-trade; otherwise explain why you’re holding/monitoring
+6. When plan passes risk checks → EXECUTE IMMEDIATELY via place_option_order() or place_multi_leg_option_order()
+7. At the end of each cycle, call log_trading_decision() with your decision (BUY/SELL/HOLD) and detailed reasoning
 
-FEW-SHOT TOOL EXAMPLES (thought → tool → follow-up):
-- Current Time (get_current_datetime):
-  Thought: “Before evaluating expirations I need today’s date.” → Action: get_current_datetime() → Follow-up: “Now I know it’s 2024-06-18, so I’ll skip weeklies expiring today.”
-- Account Snapshot (get_account_info):
-  Thought: “Check buying power before sizing spreads.” → Action: get_account_info() → Follow-up: “Equity $125k, margin free $55k, so risking $6k fits.”
-- Position Audit (get_option_positions):
-  Thought: “Need live Greeks on open structures.” → Action: get_option_positions() → Follow-up: “SPY short put spread delta -0.20; keep monitoring.”
-- Order History (get_option_order_history):
-  Thought: “Confirm last fill price on NVDA call.” → Action: get_option_order_history(symbol="NVDA") → Follow-up: “Filled 2.35 debit; use that for P/L.”
-- Cancel Stale Order (cancel_order):
-  Thought: “Mid-price moved away, cancel resting limit.” → Action: cancel_order(order_id="ABC123") → Follow-up: “Order canceled, reassess entry.”
-- Contract Discovery (get_option_contracts):
-  Thought: “Find SPY calls expiring after earnings with 0.30 delta.” → Action: get_option_contracts(underlying="SPY", expiration_after="2024-07-01", min_delta=0.25, max_delta=0.35) → Follow-up: “SPY240719C00448000 fits, request quote.”
-- Full Chain Scan (get_options_chain):
-  Thought: “Need entire chain to compare skew.” → Action: get_options_chain(underlying="TSLA", expiration="2024-08-16") → Follow-up: “Calls rich vs puts; consider risk reversal.”
-- Single Quote (get_option_quote):
-  Thought: “Verify bid/ask on candidate contract.” → Action: get_option_quote(symbol="QQQ240816P00365000") → Follow-up: “Spread $0.08 wide, liquidity acceptable.”
-- Single-Leg Execution (place_option_order):
-  Thought: “Buy 3 delta-hedged calls immediately.” → Action: place_option_order(symbol="SPY240920C00455000", side="buy", quantity=3, order_type="market") → Follow-up: “Confirm fill then log rationale.”
-- Multi-Leg Execution (place_multi_leg_option_order):
-  Thought: “Deploy iron condor risk-defined.” → Action: place_multi_leg_option_order(legs=[{leg spec...}], quantity=2, order_type="limit", limit_price=1.05) → Follow-up: “If unfilled after 2 min, adjust credit.”
-- Exit Position (close_option_position):
-  Thought: “Theta captured 70%, close short put spread.” → Action: close_option_position(symbol="AAPL240621P00180000", quantity=2) → Follow-up: “Position flat; update decision log.”
-- RSI Check (calculate_rsi):
-  Thought: “Confirm oversold reading before selling puts.” → Action: calculate_rsi(symbol="IWM", period=14, timeframe="4h") → Follow-up: “RSI 32 trending up; green light.”
-- MACD Momentum (calculate_macd):
-  Thought: “Need momentum confirmation on breakout candidate.” → Action: calculate_macd(symbol="AMD", fast=12, slow=26, signal=9, timeframe="1h") → Follow-up: “MACD cross positive; consider call debit spread.”
-- Moving Averages (calculate_moving_averages):
-  Thought: “Trend context for SPX.” → Action: calculate_moving_averages(symbol="SPX", windows=[21, 55, 200], timeframe="1d") → Follow-up: “Price above 21/55 but below 200; medium-term caution.”
-- Volatility Bands (calculate_bollinger_bands):
-  Thought: “Check if price tagging upper band before fading rally.” → Action: calculate_bollinger_bands(symbol="NFLX", period=20, std_dev=2, timeframe="1h") → Follow-up: “Upper band hit twice; structure credit call spread.”
-- Momentum Burst (get_price_momentum):
-  Thought: “Measure 7-day momentum vs peers.” → Action: get_price_momentum(symbol="SMH", lookback_days=7) → Follow-up: “Momentum rank 85th percentile; momentum play valid.”
-- Key Levels (get_support_resistance):
-  Thought: “Need levels for stop placement.” → Action: get_support_resistance(symbol="MSFT", timeframe="4h") → Follow-up: “Support 405, resistance 422; align strikes.”
-- Multi-Timeframe Stack (analyze_multi_timeframes):
-  Thought: “Align 4h/1h trends before short gamma.” → Action: analyze_multi_timeframes(symbol="GOOGL", timeframes=["1d","4h","1h"]) → Follow-up: “All bullish; avoid new call credit spreads.”
-- Greeks Rollup (analyze_option_greeks):
-  Thought: “Need net delta/theta for near-term SPY contracts.” → Action: analyze_option_greeks(underlying="SPY", expiration_date="2024-08-16", limit=12) → Follow-up: “Average theta -0.09, delta skewed long; size spreads to stay near flat.”
-- Options Screener (screen_options_market):
-  Thought: “Filter liquid tickers under 30 DTE.” → Action: screen_options_market(underlyings=["SPY","QQQ","IWM"], min_open_interest=1000, max_days_to_expiration=30) → Follow-up: “Top candidates loaded; focus research on these strikes.”
-- Sentiment Pulse (get_market_sentiment):
-  Thought: “Gauge overall risk appetite.” → Action: get_market_sentiment() → Follow-up: “Greed index elevated; tighten upside risk.”
-- Technical Research (search_technical_analysis):
-  Thought: “Look for external takes on NVDA flag pattern.” → Action: search_technical_analysis(query="NVDA bull flag 2024") → Follow-up: “Consensus bullish; aligns with call fly idea.”
-- Broad Web Search (search_general_web):
-  Thought: “Need macro data release schedule.” → Action: search_general_web(query="economic calendar CPI release time") → Follow-up: “CPI tomorrow 8:30 ET; adjust exposure.”
-- Decision Recall (get_decision_history):
-  Thought: “Review last five trades before repeating mistakes.” → Action: get_decision_history(limit=5) → Follow-up: “Last theta plays clustered in tech; diversify.”
-- Performance Summary (get_performance_summary):
-  Thought: “Quantify hit rate before upping size.” → Action: get_performance_summary(window_days=30) → Follow-up: “Win rate 62%, avg pnl $420, maintain sizing.”
-- Daily P/L Log (get_daily_pnl):
-  Thought: “Check if today is green before adding risk.” → Action: get_daily_pnl(limit=7) → Follow-up: “Down $350 today, wait for better entries.”
+REMEMBER: You see your current portfolio value, equity, cash, and unrealized P&L at the start of each cycle. Use this to inform your decisions.
 
-EXAMPLES:
-- Directional Call Buy:
-  “SPY holding support, RSI 35, momentum turning up, volatility cheap. Buying 2x SPY241220C00450000 at market.”
-  → place_option_order(symbol="SPY241220C00450000", side="buy", quantity=2)
+TOOL CHAINING:
+You achieve superior decisions by combining tools—start with foundational context (get_current_datetime(), get_account_info(), get_option_positions()), layer in technical/market research (calculate_rsi(), analyze_option_greeks(), search_general_web(), etc.), then authorize execution tools when a plan is ready. Always explain your reasoning between thoughts and tool calls so the chain stays coherent.
 
-- Credit Spread:
-  “Expect NVDA to stay below 520; IV rich, skew favorable. Opening 3-lot call credit spread.”
-  → place_multi_leg_option_order(legs=[{...call spread legs...}], quantity=3, order_type="limit", limit_price=1.35)
+CONSTRAINTS & STYLE:
+- Use absolute paths when referencing resources in tool arguments so external processes can track files reliably.
+- Keep any modifications in ASCII unless the existing content already uses other characters.
+- Do not wait for follow-up questions—progress through the cycle autonomously.
 
-- Hold/Monitor:
-  “Existing short put spread still inside risk guardrails; theta working. No adjustments this cycle.”
-
-Operate like a seasoned options PM: data-driven, risk-aware, decisive."""
+YOU ARE THE PORTFOLIO MANAGER. Make decisions, execute trades, and log outcomes. Do not suggest, recommend, or ask—ACT."""
 
 
 # ============================================================================
@@ -398,6 +631,12 @@ def run_agent_loop(
         interval_seconds: Seconds between trading cycles (default: 300 = 5 minutes)
         max_iterations: Maximum iterations (None = infinite)
         verbose: Print detailed logs
+
+    Tooling flow:
+        1. Gather context (datetime, account, positions) for situational awareness.
+        2. Layer in research tools (technical indicators, sentiment, option greeks).
+        3. Execute trades when a plan is ready (single/multi-leg order tools).
+        4. Log the decision/outcome to close the loop before trimming history.
     """
     logger.info("=" * 80)
     logger.info("AUTONOMOUS OPTIONS TRADING AGENT STARTING")
@@ -410,6 +649,8 @@ def run_agent_loop(
         {'role': 'system', 'content': SYSTEM_PROMPT}
     ]
     
+    latest_cycle_summary = ""
+    history_limit = 30
     iteration = 0
     
     while True:
@@ -426,17 +667,33 @@ def run_agent_loop(
 
             positions_summary = _format_open_positions_summary()
             performance_summary = _format_performance_summary()
+            current_pnl = _format_current_pnl()
             
             # Prompt agent for new cycle
+            history_summary_block = (
+                f"RECENT HISTORY SUMMARY:\n{latest_cycle_summary}\n\n"
+                if latest_cycle_summary else ""
+            )
+
             cycle_prompt = {
                 'role': 'user',
                 'content': (
                     f"New trading cycle #{iteration}. "
-                    "Start by checking the time, reviewing your decision history, "
-                    "and auditing all open option positions. "
-                    "Use the available option tools to find, size, and manage trades.\n\n"
+                    "You are the PORTFOLIO MANAGER - you MUST make trading decisions and execute trades.\n\n"
+                    f"{history_summary_block}"
+                    "REQUIRED ACTIONS THIS CYCLE:\n"
+                    "1. Check current time/date (get_current_datetime)\n"
+                    "2. Review decision history (get_decision_history)\n"
+                    "3. Audit open positions (get_option_positions)\n"
+                    "4. Analyze market opportunities using technical analysis tools\n"
+                    "5. EXECUTE TRADES when opportunities are identified - DO NOT just monitor!\n\n"
+                    "CRITICAL: If you identify a trading opportunity, you MUST execute it immediately using "
+                    "place_option_order() or place_multi_leg_option_order(). Do not just describe what you would do - "
+                    "ACTUALLY DO IT. You have full authority to trade.\n\n"
+                    f"{current_pnl}\n\n"
                     f"{positions_summary}\n\n"
-                    f"{performance_summary}"
+                    f"{performance_summary}\n\n"
+                    "Remember: You are the decision maker. Execute trades when analysis supports them."
                 )
             }
             conversation_history.append(cycle_prompt)
@@ -444,11 +701,16 @@ def run_agent_loop(
             # Agent thinking loop (may require multiple tool calls)
             thinking = True
             tool_call_count = 0
+            max_tool_iterations = 10  # Prevent infinite loops
+            trade_executed_this_cycle = False
+            final_agent_summary = ""
             
-            while thinking:
+            while thinking and tool_call_count < max_tool_iterations:
                 # Call LLM with tools
                 if verbose:
                     logger.info("Consulting agent...")
+                    if tool_call_count == 0:
+                        logger.debug(f"Available tools: {[tool.__name__ for tool in TOOLS]}")
                 
                 response = chat(
                     model=model,
@@ -478,6 +740,11 @@ def run_agent_loop(
                     if verbose:
                         logger.info(f"Tool calls detected: {len(tool_calls)}")
                     
+                    # Track if any trade functions are being called
+                    for tool_call in tool_calls:
+                        if tool_call.get('name') in TRADE_FUNCTIONS:
+                            trade_executed_this_cycle = True
+                    
                     for tool_call in tool_calls:
                         function_name = tool_call['name']
                         function_args = tool_call.get('arguments', {})
@@ -491,7 +758,22 @@ def run_agent_loop(
                         
                         # Execute the tool
                         try:
-                            result = globals()[function_name](**function_args)
+                            # Look up function in TOOL_MAP
+                            if function_name not in TOOL_MAP:
+                                raise KeyError(f"Unknown tool function: {function_name}. Available tools: {list(TOOL_MAP.keys())}")
+                            
+                            # Normalize and validate parameters before execution
+                            try:
+                                normalized_args = _normalize_tool_parameters(function_name, function_args)
+                                if verbose and normalized_args != function_args:
+                                    logger.info(f"Normalized parameters: {json.dumps(normalized_args)}")
+                            except ValueError as ve:
+                                # Parameter validation failed
+                                result = {"error": f"Parameter validation failed: {str(ve)}"}
+                                logger.error(f"Parameter validation error for {function_name}: {ve}")
+                            else:
+                                tool_function = TOOL_MAP[function_name]
+                                result = tool_function(**normalized_args)
                             
                             if verbose:
                                 logger.info(f"Tool result: {json.dumps(result, indent=2)[:500]}...")
@@ -499,16 +781,34 @@ def run_agent_loop(
                             # Special handling for trading actions
                             if function_name in TRADE_FUNCTIONS and 'error' not in result:
                                 logger.info(f"Trade executed: {result}")
+                                
+                                # Extract agent's reasoning from the conversation
+                                reasoning = agent_content if agent_content else "Options trade executed via agent"
+                                
+                                # Get current portfolio value for performance tracking
+                                portfolio_value = None
+                                try:
+                                    account_info = get_account_info()
+                                    if 'error' not in account_info:
+                                        portfolio_value = account_info.get('portfolio_value')
+                                except Exception as e:
+                                    logger.warning(f"Could not fetch portfolio value: {e}")
+                                
                                 save_decision(
-                                    reasoning="Options trade executed via agent",
+                                    reasoning=reasoning,
                                     action="options_trade",
                                     parameters=function_args,
-                                    result=result
+                                    result=result,
+                                    portfolio_value=portfolio_value
                                 )
                             
+                        except KeyError as e:
+                            result = {"error": f"Tool not found: {str(e)}"}
+                            logger.error(f"Tool lookup error: {e}")
+                            logger.error(f"Available tools: {list(TOOL_MAP.keys())}")
                         except Exception as e:
                             result = {"error": f"Tool execution failed: {str(e)}"}
-                            logger.error(f"Tool error: {e}")
+                            logger.error(f"Tool execution error for {function_name}: {e}", exc_info=True)
                         
                         # Add tool result to conversation
                         tool_response = {
@@ -520,6 +820,20 @@ def run_agent_loop(
                             tool_response['tool_call_id'] = tool_call_id
                         
                         conversation_history.append(tool_response)
+                        
+                        if isinstance(result, dict):
+                            error_msg = result.get('error')
+                        else:
+                            error_msg = None
+                        if error_msg:
+                            failure_notice = (
+                                f"Previous tool call {function_name} failed: {error_msg}. "
+                                "Adjust your plan and retry if needed."
+                            )
+                            conversation_history.append({
+                                'role': 'user',
+                                'content': failure_notice
+                            })
                     
                     # Continue loop to let agent process tool results
                     continue
@@ -529,19 +843,43 @@ def run_agent_loop(
                     agent_message = message_dict.get('content', '')
                     if agent_message:
                         logger.info(f"Agent summary: {agent_message}")
+                    final_agent_summary = agent_message or final_agent_summary
+                    
+                    # Warn if no trades were executed this cycle and log reasoning
+                    if tool_call_count > 0 and not trade_executed_this_cycle:
+                        warning_msg = (
+                            f"Cycle #{iteration} completed with {tool_call_count} tool calls but NO TRADE EXECUTIONS. "
+                            f"Agent may be hesitating."
+                        )
+                        if final_agent_summary:
+                            warning_msg += f" Reasoning: {final_agent_summary}"
+                        logger.warning(warning_msg)
                     
                     thinking = False
             
+            if tool_call_count >= max_tool_iterations:
+                logger.warning(f"Reached max tool iterations ({max_tool_iterations}) for cycle #{iteration}. Stopping tool loop.")
+            
+            cycle_summary_parts = [
+                f"Cycle {iteration}",
+                f"Trades executed: {'yes' if trade_executed_this_cycle else 'no'}",
+                f"Tool calls: {tool_call_count}"
+            ]
+            if final_agent_summary:
+                cycle_summary_parts.append(f"Reasoning: {final_agent_summary}")
+            latest_cycle_summary = " | ".join(cycle_summary_parts)
+
             logger.info(f"Cycle complete. Made {tool_call_count} tool calls.")
             if interval_seconds > 0:
                 logger.info(f"Next cycle in {interval_seconds} seconds...\n")
             else:
                 logger.info("Next cycle starting immediately...\n")
             
-            # Limit conversation history size (keep last 50 messages)
-            if len(conversation_history) > 50:
-                # Keep system prompt + recent messages
-                conversation_history = [conversation_history[0]] + conversation_history[-49:]
+            # Limit conversation history size (keep last history_limit messages)
+            if len(conversation_history) > history_limit + 1:
+                truncated = len(conversation_history) - (history_limit + 1)
+                conversation_history = [conversation_history[0]] + conversation_history[-history_limit:]
+                logger.debug(f"Trimmed {truncated} older messages to cap history at {history_limit}.")
             
             # Wait before next cycle if delay configured
             if interval_seconds > 0:
