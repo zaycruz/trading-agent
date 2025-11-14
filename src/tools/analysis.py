@@ -11,8 +11,8 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-# Import from alpaca_tools to get price data
-from alpaca_tools import (
+# Import from tools.alpaca to get price data
+from .alpaca import (
     get_price_bars,
     get_options_chain,
     get_option_quote,
@@ -594,7 +594,6 @@ def analyze_option_greeks(
                 "strike_price": contract.get("strike_price"),
                 "expiration_date": contract.get("expiration_date"),
                 "open_interest": contract.get("open_interest"),
-            }
                 "greeks_source": "feed"
             }
             if "error" in quote:
@@ -764,3 +763,4 @@ def screen_options_market(
         }
     except Exception as e:
         return {"error": f"Failed to screen options: {str(e)}"}
+

@@ -43,7 +43,7 @@ from alpaca.data.timeframe import TimeFrame
 import pandas as pd
 
 # Load environment variables
-env_path = Path(__file__).parent.parent / ".env"
+env_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 # Initialize clients globally for tool functions
@@ -646,3 +646,4 @@ def get_current_datetime() -> Dict:
         "day_of_week": now.strftime("%A"),
         "unix_timestamp": int(now.timestamp())
     }
+

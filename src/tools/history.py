@@ -4,13 +4,13 @@ Tracks agent decisions, trades, and performance over time.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 from collections import defaultdict
 
 # History file location
-HISTORY_FILE = Path(__file__).parent.parent / "data" / "decision_history.json"
+HISTORY_FILE = Path(__file__).parent.parent.parent / "data" / "decision_history.json"
 
 
 def _ensure_data_dir():
@@ -107,10 +107,13 @@ def get_decision_history(limit: int = 20) -> List[Dict]:
         return [{"error": f"Failed to get history: {str(e)}"}]
 
 
-def get_performance_summary() -> Dict:
+def get_performance_summary(window_days: int = 30) -> Dict:
     """
     Get summary of agent performance over time.
     Analyzes decision history to show win rate, total trades, etc.
+    
+    Args:
+        window_days: Number of days to look back (default: 30)
     
     Returns performance metrics and statistics.
     """
@@ -123,6 +126,28 @@ def get_performance_summary() -> Dict:
                 "message": "No decision history yet"
             }
         
+        # Filter by window_days if specified
+        if window_days > 0:
+            cutoff_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            cutoff_date = cutoff_date - timedelta(days=window_days)
+            filtered_history = []
+            for decision in history:
+                try:
+                    ts = decision.get('timestamp')
+                    if ts:
+                        dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                        if dt >= cutoff_date:
+                            filtered_history.append(decision)
+                except (ValueError, TypeError):
+                    continue
+            history = filtered_history
+        
+        if not history:
+            return {
+                "total_decisions": 0,
+                "message": f"No decisions in the last {window_days} days"
+            }
+        
         # Count actions
         actions = {}
         trades = []
@@ -131,7 +156,7 @@ def get_performance_summary() -> Dict:
             action = decision.get('action', 'unknown')
             actions[action] = actions.get(action, 0) + 1
             
-            if action in ['buy', 'sell']:
+            if action in ['buy', 'sell', 'options_trade']:
                 trades.append(decision)
         
         # Get portfolio value progression
@@ -141,20 +166,31 @@ def get_performance_summary() -> Dict:
             if d.get('portfolio_value') is not None
         ]
         
+        # Calculate win rate from trades
+        win_count = 0
+        for trade in trades:
+            result = trade.get('result', {})
+            if isinstance(result, dict):
+                pnl = result.get('unrealized_pl') or result.get('pnl')
+                if pnl is not None and pnl > 0:
+                    win_count += 1
+        
         performance = {
             "total_decisions": len(history),
             "total_trades": len(trades),
+            "win_rate": (win_count / len(trades) * 100) if trades else None,
             "actions_breakdown": actions,
-            "first_decision": history[0].get('timestamp'),
-            "last_decision": history[-1].get('timestamp'),
+            "first_decision": history[0].get('timestamp') if history else None,
+            "last_decision": history[-1].get('timestamp') if history else None,
         }
         
         if portfolio_values:
             performance["initial_portfolio_value"] = portfolio_values[0]
             performance["current_portfolio_value"] = portfolio_values[-1]
+            performance["net_pnl"] = portfolio_values[-1] - portfolio_values[0]
             performance["portfolio_change_pct"] = (
                 ((portfolio_values[-1] - portfolio_values[0]) / portfolio_values[0]) * 100
-            )
+            ) if portfolio_values[0] != 0 else 0
         
         return performance
     except Exception as e:
@@ -248,6 +284,62 @@ def get_daily_pnl(limit: int = 30) -> Dict:
         return {"error": f"Failed to get daily P/L: {str(e)}"}
 
 
+def log_trading_decision(
+    decision_type: str,
+    reasoning: str,
+    model: Optional[str] = None,
+    cycle_number: Optional[int] = None,
+    tools_used: Optional[List[str]] = None,
+) -> Dict:
+    """Log a BUY/SELL/HOLD decision with explicit reasoning."""
+    try:
+        normalized_decision = (decision_type or "").upper().strip()
+        if normalized_decision not in {"BUY", "SELL", "HOLD"}:
+            return {
+                "error": (
+                    f"Invalid decision_type '{decision_type}'. "
+                    "Must be 'BUY', 'SELL', or 'HOLD'"
+                )
+            }
+
+        history = _load_history()
+
+        portfolio_value: Optional[float] = None
+        try:
+            # Import here to avoid circular dependency
+            from .alpaca import get_account_info
+            account_info = get_account_info()
+            if isinstance(account_info, dict) and "error" not in account_info:
+                portfolio_value = account_info.get("portfolio_value")
+        except Exception:
+            # Best-effort; ignore failures to fetch account info
+            pass
+
+        decision_entry: Dict = {
+            "decision_id": len(history) + 1,
+            "timestamp": datetime.now().isoformat(),
+            "decision_type": normalized_decision,
+            "reasoning": reasoning,
+            "model": model,
+            "cycle_number": cycle_number,
+            "tools_used": tools_used or [],
+            "portfolio_value": portfolio_value,
+        }
+
+        history.append(decision_entry)
+        _save_history(history)
+
+        return {
+            "success": True,
+            "decision_id": decision_entry["decision_id"],
+            "timestamp": decision_entry["timestamp"],
+            "decision_type": normalized_decision,
+            "message": f"Decision logged: {normalized_decision}",
+        }
+    except Exception as exc:
+        return {"error": f"Failed to log decision: {exc}"}
+
+
 def clear_history() -> Dict:
     """
     Clear all decision history (use with caution).
@@ -261,3 +353,4 @@ def clear_history() -> Dict:
         }
     except Exception as e:
         return {"error": f"Failed to clear history: {str(e)}"}
+

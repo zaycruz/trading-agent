@@ -309,24 +309,38 @@ def _normalize_tool_parameters(function_name: str, raw_args: Dict[str, Any]) -> 
         
         # Normalize order_type
         if 'order_type' in normalized:
-            order_type = str(normalized['order_type']).lower()
-            if order_type in ['market', 'marketorder']:
+            order_type_value = str(normalized['order_type'])
+            order_type_lower = order_type_value.lower()
+            if order_type_lower in ['market', 'marketorder']:
                 normalized['order_type'] = 'market'
-            elif order_type in ['limit', 'limitorder']:
+            elif order_type_lower in ['limit', 'limitorder']:
                 normalized['order_type'] = 'limit'
             else:
-                logger.warning(f"Unknown order_type '{normalized['order_type']}', defaulting to 'market'")
+                logger.warning(f"Unknown order_type '{order_type_value}', defaulting to 'market'")
                 normalized['order_type'] = 'market'
+
+    if function_name == 'close_option_position':
+        if 'quantity' in normalized:
+            try:
+                qty_val = normalized['quantity']
+                if isinstance(qty_val, str):
+                    normalized['quantity'] = int(float(qty_val))
+                elif isinstance(qty_val, (int, float)):
+                    normalized['quantity'] = int(qty_val)
+            except (ValueError, TypeError):
+                raise ValueError(f"Invalid quantity value: {normalized['quantity']}")
     
     if function_name == 'place_multi_leg_option_order':
         # Validate legs
         if 'legs' in normalized:
             legs = normalized['legs']
-            if not isinstance(legs, list) or len(legs) == 0:
-                raise ValueError(f"place_multi_leg_option_order() requires 'legs' to be a non-empty list")
+            if not isinstance(legs, list):
+                raise ValueError("Each leg must be a dictionary")
+            if len(legs) == 0:
+                raise ValueError("place_multi_leg_option_order() requires 'legs' to be a non-empty list")
             for leg in legs:
                 if not isinstance(leg, dict):
-                    raise ValueError(f"Each leg must be a dictionary, got {type(leg)}")
+                    raise ValueError("Each leg must be a dictionary")
                 if 'symbol' not in leg:
                     raise ValueError(f"Each leg must have a 'symbol' field")
                 if 'side' not in leg:
@@ -345,13 +359,14 @@ def _normalize_tool_parameters(function_name: str, raw_args: Dict[str, Any]) -> 
         
         # Normalize order_type
         if 'order_type' in normalized:
-            order_type = str(normalized['order_type']).lower()
-            if order_type in ['market', 'marketorder']:
+            order_type_value = str(normalized['order_type'])
+            order_type_lower = order_type_value.lower()
+            if order_type_lower in ['market', 'marketorder']:
                 normalized['order_type'] = 'market'
-            elif order_type in ['limit', 'limitorder']:
+            elif order_type_lower in ['limit', 'limitorder']:
                 normalized['order_type'] = 'limit'
             else:
-                logger.warning(f"Unknown order_type '{normalized['order_type']}', defaulting to 'market'")
+                logger.warning(f"Unknown order_type '{order_type_value}', defaulting to 'market'")
                 normalized['order_type'] = 'market'
     
     return normalized

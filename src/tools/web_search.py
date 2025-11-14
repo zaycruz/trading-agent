@@ -9,7 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables
-env_path = Path(__file__).parent.parent / ".env"
+env_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 try:
@@ -140,3 +140,4 @@ def search_general_web(query: str, max_results: int = 5) -> List[Dict]:
         return results
     except Exception as e:
         return [{"error": f"Failed to search: {str(e)}"}]
+
